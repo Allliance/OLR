@@ -7,7 +7,7 @@ from pathlib import Path
 
 from src.dapo_ray_trainer import RayDAPOTrainer
 from src.fixed_labels import answer_key, extract_answer
-from src.syn_logic_reward import SynLogicRewardManager, verifier_classes, verifier_deadline
+from src.syn_logic_reward import SynLogicRewardManager, TaskDeadlineExceeded, verifier_classes, verifier_deadline
 
 from .refinement import OnlineLabelRefiner
 
@@ -71,7 +71,7 @@ class RefinementReward:
                     try:
                         with verifier_deadline():
                             key = answer_key(extracted, verifier)
-                    except Exception:
+                    except (Exception, TaskDeadlineExceeded):
                         key = None
                     keys.append(key)
                     extracted_count += key is not None
