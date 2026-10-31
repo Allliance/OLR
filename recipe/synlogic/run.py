@@ -12,6 +12,28 @@ CONDITIONS = ("full-clean", "noise90", "noise70", "noise50",
               "noise90-olr", "noise70-olr", "noise50-olr")
 
 
+def prepared_metadata(root, condition):
+    from synlogic.template import PINNED_TEMPLATE_SHA256, PROMPT_PROTOCOL
+    path = root / "runs" / condition / "portable-provenance.json"
+    metadata = json.loads(path.read_text())
+    identity = metadata.get("wandb", {}).get("id")
+    if (metadata.get("condition") != condition or metadata.get("prompt_protocol") != PROMPT_PROTOCOL
+            or metadata.get("prompt_template_sha256") != PINNED_TEMPLATE_SHA256
+            or not metadata.get("protocol_id", "").endswith(f"/qwen3-4b-synlogic-{condition}-baseprompt")
+            or not isinstance(identity, str) or not identity.endswith("-baseprompt")
+            or f"-{condition}-s42-" not in identity):
+        raise ValueError("Prepared provenance must identify this corrected base-prompt condition and a separate W&B run")
+    return metadata
+
+
+def check_checkpoint_protocol(folder, metadata):
+    for name in ("olr_state.json", "validated.json"):
+        state = json.loads((folder / name).read_text())
+        if (state.get("protocol_id") != metadata["protocol_id"]
+                or state.get("prompt_template_sha256") != metadata["prompt_template_sha256"]):
+            raise ValueError("Refuse to mix a pilot or another prompt protocol into the corrected comparison")
+
+
 def overrides(root, condition, framework_code):
     # Reuse execution settings that have passed actual MI355X training/recovery;
     # replace the scientific settings with this paper's matched GRPO protocol.
@@ -40,7 +62,7 @@ def overrides(root, condition, framework_code):
         "actor_rollout_ref.rollout.val_kwargs.top_p": "1.0",
         "reward_model.score_type": "acc_without_think_format",
         "trainer.total_training_steps": "970", "trainer.total_epochs": "10000",
-        "trainer.experiment_name": f"Qwen3-4B-Base-SynLogic-{condition}-s42",
+        "trainer.experiment_name": f"Qwen3-4B-Base-SynLogic-{condition}-s42-baseprompt",
         "trainer.default_local_dir": str(root / "runs" / condition / "checkpoints"),
         "hydra.run.dir": str(root / "runs" / condition / "hydra"),
     }
@@ -59,6 +81,9 @@ def overrides(root, condition, framework_code):
     if len(overlap) != 36 or len(set(overlap)) != 36 or not all(0 <= i < 270 for i in overlap):
         raise ValueError("The original split's 36 prompt overlaps must be explicitly audited")
     values.append("+evaluation.overlap_indices=" + json.dumps(overlap, separators=(",", ":")))
+    metadata = prepared_metadata(root, condition)
+    values += ["+provenance.protocol_id=" + metadata["protocol_id"],
+               "+provenance.prompt_template_sha256=" + metadata["prompt_template_sha256"]]
     return values
 
 
@@ -88,11 +113,11 @@ def main():
     if args.calibrate:
         import pyarrow.parquet as pq
         from transformers import AutoTokenizer
-        from synlogic.template import bind_nonthinking
+        from synlogic.template import verify_base_template
         calibration_file = root / "calibration/data/prepared/full-clean.parquet"
         table = pq.read_table(calibration_file, columns=["prompt"])
         expected = json.loads((root / "supervision/prompt-length-audit.json").read_text())["full-clean"]["max"]
-        tokenizer = bind_nonthinking(AutoTokenizer.from_pretrained(root / "model"))
+        tokenizer = verify_base_template(AutoTokenizer.from_pretrained(root / "model"))
         if table.num_rows != 1 or len(tokenizer.apply_chat_template(
                 table.to_pylist()[0]["prompt"], tokenize=True, add_generation_prompt=True)) != expected:
             raise ValueError("The calibration input is not the audited longest complete prompt")
@@ -110,6 +135,7 @@ def main():
         step = int(tracker.read_text())
         if not (tracker.parent / f"global_step_{step}/validated.json").is_file():
             raise ValueError("Resume checkpoint has not passed full-state validation")
+        check_checkpoint_protocol(tracker.parent / f"global_step_{step}", prepared_metadata(root, args.condition))
         settings += ["trainer.val_before_train=False"]
     (run / "overrides.json").write_text(json.dumps(settings, indent=2) + "\n")
     sys.argv = [str(Path(__file__).with_name("main.py")), *settings]
@@ -134,7 +160,10 @@ def main():
         if total - free > 1024**3:
             raise ValueError("The assigned GPU has an unreconciled existing workload")
         if not args.calibrate:
-            identity = f"synlogic-q3-4b-{args.condition}-s42-20261031"
+            metadata = prepared_metadata(root, args.condition)
+            identity = metadata["wandb"]["id"]
+            if not isinstance(identity, str) or not identity:
+                raise ValueError("A genuine logging identity must be prepared for this protocol")
             if os.environ.get("WANDB_RUN_ID", identity) != identity:
                 raise ValueError("W&B recovery identity mismatch")
             os.environ.update(WANDB_RUN_ID=identity, WANDB_RESUME="allow", WANDB_INIT_TIMEOUT="90")

@@ -122,6 +122,8 @@ class SynLogicOLRTrainer(RayDAPOTrainer):
         folder = Path(self.config.trainer.default_local_dir) / f"global_step_{self.global_steps}"
         folder.mkdir(parents=True, exist_ok=True)
         payload = {"step": self.global_steps, "last_reward_step": self.reward_fn.last_step,
+                   "protocol_id": self.config.provenance.protocol_id,
+                   "prompt_template_sha256": self.config.provenance.prompt_template_sha256,
                    "refiner": self.reward_fn.refiner.state_dict()}
         temporary = folder / "olr_state.json.tmp"
         temporary.write_text(json.dumps(payload) + "\n")
@@ -138,6 +140,9 @@ class SynLogicOLRTrainer(RayDAPOTrainer):
         if self.global_steps:
             folder = Path(self.config.trainer.default_local_dir) / f"global_step_{self.global_steps}"
             state = json.loads((folder / "olr_state.json").read_text())
+            if (state.get("protocol_id") != self.config.provenance.protocol_id
+                    or state.get("prompt_template_sha256") != self.config.provenance.prompt_template_sha256):
+                raise ValueError("Checkpoint prompt protocol differs from the corrected comparison")
             if state["step"] != self.global_steps or state["last_reward_step"] != self.global_steps:
                 raise ValueError("Model and OLR histories belong to different updates")
             self.reward_fn.refiner.load_state_dict(state["refiner"])

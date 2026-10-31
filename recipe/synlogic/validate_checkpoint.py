@@ -26,11 +26,19 @@ def main():
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
         return
-    if (folder / "validated.json").exists():
-        return
     step = int(folder.name.removeprefix("global_step_"))
     require(json.loads((folder / "complete.json").read_text())["step"] == step, "Incomplete checkpoint")
     refinement = json.loads((folder / "olr_state.json").read_text())
+    from template import PINNED_TEMPLATE_SHA256
+    require(refinement.get("prompt_template_sha256") == PINNED_TEMPLATE_SHA256, "Checkpoint template protocol mismatch")
+    require(refinement.get("protocol_id", "").endswith("-baseprompt"), "Checkpoint lacks the corrected protocol identity")
+    if (folder / "validated.json").exists():
+        previous = json.loads((folder / "validated.json").read_text())
+        require(previous.get("step") == step and previous.get("validated") is True
+                and previous.get("protocol_id") == refinement["protocol_id"]
+                and previous.get("prompt_template_sha256") == PINNED_TEMPLATE_SHA256,
+                "Existing validation marker belongs to another prompt protocol")
+        return
     require(refinement["step"] == refinement["last_reward_step"] == step, "OLR/model step mismatch")
     from refinement import OnlineLabelRefiner
     refiner = OnlineLabelRefiner(**refinement["refiner"]["config"])
@@ -71,6 +79,7 @@ def main():
     loader = torch.load(folder / "data.pt", map_location="cpu", weights_only=False)
     require(isinstance(loader, dict) and loader, "Missing dataloader state")
     result = {"step": step, "validated": True, "model_parameters": parameters,
+              "protocol_id": refinement["protocol_id"], "prompt_template_sha256": PINNED_TEMPLATE_SHA256,
               "optimizer_states": optimizer_states, "olr_prompt_visits": visits,
               "components": ["model", "optimizer", "lr_scheduler", "rng", "dataloader", "olr_history"]}
     temporary = folder / "validated.tmp"

@@ -52,18 +52,21 @@ from pass six onward. Derive the epoch from completed iterations so recovery
 and block continuation do not reset the warmup or history.
 
 Use a 4,096-token response cap and preserve complete prompts with a 24,576-token
-allowance and truncation set to error. The measured maximum is 24,489 tokens;
-540 training and seven validation prompts exceed the old 2,048 limit. The
+allowance and truncation set to error. The measured maximum is 24,485 tokens;
+the original long prompts must not be filtered or truncated. The
 combined 28,672-token allowance fits the model's 32,768 context. Train with
 temperature 1, top-p 1, top-k -1; validate eight sampled responses at temperature
 0.6 with the same top-p/top-k. Override the model's shipped greedy generation
-config. Stop on 151643 and 151645, and bind `enable_thinking=False` into the
-actual template. Use verifier accuracy without a separate reasoning-tag bonus.
+config. Stop on 151643 and 151645. Use the unmodified base-model chat template,
+as in the released launcher with no thinking kwargs; do not inject an empty
+`<think>` block. Use verifier accuracy without a separate reasoning-tag bonus.
+Earlier non-thinking pilots have separate logging identities and checkpoints;
+the corrected comparison starts from the untouched base weights.
 
 ## Execution and recovery
 
 This recipe uses `model-task-align-rl` revision
-`5e025bd423873ede1a5f1fe9c3a6a617f855ea59` as its calibrated veRL backend.
+`ec02977cba8c365ea12725d9e737220e85cc1296` as its calibrated veRL backend.
 The OLR adapter lives in this fork; the upstream eight-A100 installation is
 not assumed to work unchanged on the current AMD cluster.
 

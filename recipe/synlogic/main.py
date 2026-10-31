@@ -28,10 +28,10 @@ class TaskRunner:
         from verl.trainer.ppo.ray_trainer import ResourcePoolManager, Role
         from src.syn_logic_reward import SynLogicRewardManager
         from .trainer import SynLogicOLRTrainer
-        from .template import bind_nonthinking
+        from .template import verify_base_template
 
         OmegaConf.resolve(config)
-        tokenizer = bind_nonthinking(hf_tokenizer(config.actor_rollout_ref.model.path))
+        tokenizer = verify_base_template(hf_tokenizer(config.actor_rollout_ref.model.path))
         resource_pool = "single-card"
         roles = {Role.ActorRollout: ray.remote(ActorRolloutRefWorker),
                  Role.Critic: ray.remote(CriticWorker), Role.RefPolicy: ray.remote(ActorRolloutRefWorker)}
