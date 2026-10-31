@@ -44,9 +44,12 @@ outer iteration, optimizer minibatches of 32 prompt groups, LR 1e-6, no LR
 warmup, AdamW weight decay 0.01, token-mean loss, clipping 0.2/0.2, dual clip 3,
 and reference KL loss 0.001 (`low_var_kl`). Disable dynamic group filtering.
 There are 97 complete batches per pass, hence **970 outer iterations / 4,850
-optimizer minibatches** per condition. Zero-based `start_select_epoch=4`
-means five warmup passes and refinement on passes six through ten. Derive
-the epoch from completed iterations so recovery does not reset the warmup.
+optimizer minibatches** in the first comparison block. Then automatically
+resume further matched ten-pass blocks until the user's explicit stop,
+preserving the optimizer, dataloader, OLR histories, and W&B identity.
+Zero-based `start_select_epoch=4` means five warmup passes, with refinement
+from pass six onward. Derive the epoch from completed iterations so recovery
+and block continuation do not reset the warmup or history.
 
 Use a 4,096-token response cap and preserve complete prompts with a 24,576-token
 allowance and truncation set to error. The measured maximum is 24,489 tokens;
@@ -81,7 +84,8 @@ Save at iteration 1, every 10 iterations, the endpoint, and lease drain.
 Include model, optimizer, scheduler, RNG, dataloader, and `olr_state.json`.
 Validate matching counters and complete refinement histories. Independent CPU
 workers publish to the authorized HF mirror under `projects/OLR/runs/`.
-Keep two local checkpoints only after verifying their remote payloads, and
+Keep two recent checkpoints and the matched 970-iteration comparison milestones
+after verifying their remote payloads, and
 preserve logging identities on resume. Operational files stay in ignored
 scratch or external run storage.
 
@@ -90,15 +94,20 @@ pass@k for k=1..256 using 256 responses per validation question. Report both
 original and disjoint splits. Derive matched 4k and extended 8k response-cap
 curves from the same token streams; distinguish strict answer extraction from
 a relaxed semantic check and retain verifier errors as uncertainty bounds.
-Final condition checkpoints require the same diagnostic comparison.
+Matched comparison checkpoints require the same diagnostic comparison.
 
 Maintain minute-level progress/recovery checks and 15-minute resource/logging/
 publication audits through the experiment or user stop. Stop blind retries at
 three failures in six hours or two without a newer checkpoint; diagnose and
 test a correction before resuming. A user STOP disables restart and renewal
 while preserving checkpoints and the separate allocation holder. Holders end
-in `sleep infinity`; use at most eight non-overlapping 24-hour leases toward
-the protocol's endpoint. Startup verification is not study completion.
+in `sleep infinity`; use non-overlapping leases of at most 24 hours and never
+reserve more than eight GPUs concurrently. Automatic renewal has an eight-lease
+review horizon that the controller cannot reset. Before extending it, the
+active agent must record a fresh check of the user's continuing until-stop
+authorization, the current goal, STOP latches, and unchanged resource limits.
+Continue the requested work until the user's stop. Startup verification is
+not study completion.
 
 Sources: [OLR paper](https://arxiv.org/abs/2604.03993),
 [released Qwen3 script](../../exp_script/run_qwen3-4B-base_noise_label_weak_use_olr.sh).

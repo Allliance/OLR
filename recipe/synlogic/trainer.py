@@ -126,6 +126,9 @@ class SynLogicOLRTrainer(RayDAPOTrainer):
         temporary = folder / "olr_state.json.tmp"
         temporary.write_text(json.dumps(payload) + "\n")
         temporary.replace(folder / "olr_state.json")
+        if self.global_steps % 970 == 0:
+            (folder / "comparison.json").write_text(json.dumps({"step": self.global_steps,
+                                                               "block_updates": 970}) + "\n")
         # The native complete marker and recovery pointer are published only
         # after the refinement state and every model/optimizer shard exist.
         super()._save_checkpoint()
