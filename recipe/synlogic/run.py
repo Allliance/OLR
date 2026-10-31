@@ -101,7 +101,7 @@ def main():
                      "actor_rollout_ref.actor.ppo_mini_batch_size=1",
                      "actor_rollout_ref.rollout.ignore_eos=True",
                      "+actor_rollout_ref.rollout.min_tokens=4096",
-                     "trainer.total_training_steps=1", "trainer.save_freq=0",
+                     "trainer.total_training_steps=1", "trainer.save_freq=0", "trainer.test_freq=0",
                      "trainer.val_before_train=False", "trainer.logger=[console]",
                      "trainer.resume_mode=disable", f"trainer.default_local_dir={run}/checkpoints",
                      f"hydra.run.dir={run}/hydra"]
