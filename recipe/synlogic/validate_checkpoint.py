@@ -1,0 +1,83 @@
+"""Validate the Qwen3-4B full checkpoint, including its matching OLR history."""
+
+import argparse
+import ctypes
+import fcntl
+import json
+import math
+import mmap
+from pathlib import Path
+
+import torch
+
+
+def require(condition, message):
+    if not condition:
+        raise ValueError(message)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("checkpoint", type=Path)
+    args = parser.parse_args()
+    folder = args.checkpoint
+    lock = (folder.parent / (".validation-" + folder.name + ".lock")).open("a")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        return
+    if (folder / "validated.json").exists():
+        return
+    step = int(folder.name.removeprefix("global_step_"))
+    require(json.loads((folder / "complete.json").read_text())["step"] == step, "Incomplete checkpoint")
+    refinement = json.loads((folder / "olr_state.json").read_text())
+    require(refinement["step"] == refinement["last_reward_step"] == step, "OLR/model step mismatch")
+    from refinement import OnlineLabelRefiner
+    refiner = OnlineLabelRefiner(**refinement["refiner"]["config"])
+    refiner.load_state_dict(refinement["refiner"])
+    visits = sum(len(history["rates"]) for history in refiner.history.values())
+    require(visits == step * 160, "OLR history is missing processed prompt groups")
+
+    # The controller has strict VM overcommit. Shared file-backed mappings with
+    # write permission removed avoid a writable 50-GB private reservation.
+    original = torch.UntypedStorage.from_file
+    libc = ctypes.CDLL(None, use_errno=True)
+    libc.mprotect.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int]
+    libc.mprotect.restype = ctypes.c_int
+
+    def readonly_mapping(*args, **kwargs):
+        storage = original(*args, **kwargs)
+        if storage.nbytes() and libc.mprotect(storage.data_ptr(), storage.nbytes(), mmap.PROT_READ):
+            raise OSError(ctypes.get_errno(), "Cannot protect checkpoint mapping")
+        return storage
+
+    torch.UntypedStorage.from_file = readonly_mapping
+    with torch.serialization.set_default_mmap_options(mmap.MAP_SHARED):
+        model = torch.load(folder / "actor/model_world_size_1_rank_0.pt", map_location="cpu",
+                           weights_only=False, mmap=True)
+        parameters = sum(t.numel() for t in model.values() if isinstance(t, torch.Tensor))
+        require(3_900_000_000 <= parameters <= 4_600_000_000, f"Incomplete Qwen3-4B model: {parameters}")
+        require(all(any(f"layers.{i}." in key for key in model) for i in range(36)), "Missing model layers")
+        del model
+        optimizer = torch.load(folder / "actor/optim_world_size_1_rank_0.pt", map_location="cpu",
+                               weights_only=False, mmap=True)
+        require(optimizer["state"] and optimizer["param_groups"], "Missing optimizer state")
+        require(all(math.isfinite(g["lr"]) and g["lr"] > 0 for g in optimizer["param_groups"]), "Invalid LR")
+        optimizer_states = len(optimizer["state"])
+        require(all(float(v["step"]) >= step for v in optimizer["state"].values()), "Old optimizer counters")
+        del optimizer
+    extra = torch.load(folder / "actor/extra_state_world_size_1_rank_0.pt", map_location="cpu", weights_only=False)
+    require(extra.get("lr_scheduler") is not None and extra.get("rng"), "Missing scheduler or RNG")
+    loader = torch.load(folder / "data.pt", map_location="cpu", weights_only=False)
+    require(isinstance(loader, dict) and loader, "Missing dataloader state")
+    result = {"step": step, "validated": True, "model_parameters": parameters,
+              "optimizer_states": optimizer_states, "olr_prompt_visits": visits,
+              "components": ["model", "optimizer", "lr_scheduler", "rng", "dataloader", "olr_history"]}
+    temporary = folder / "validated.tmp"
+    temporary.write_text(json.dumps(result, indent=2) + "\n")
+    temporary.replace(folder / "validated.json")
+    print(json.dumps(result))
+
+
+if __name__ == "__main__":
+    main()
