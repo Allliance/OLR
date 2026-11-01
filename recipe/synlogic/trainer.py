@@ -111,6 +111,24 @@ class RefinementReward:
 
 
 class SynLogicOLRTrainer(RayDAPOTrainer):
+    def _create_dataloader(self, *args, **kwargs):
+        super()._create_dataloader(*args, **kwargs)
+        from torch.utils.data import RandomSampler
+        from .sampling import ResumableDataLoader, ResumableRandomSampler
+
+        original = self.train_dataloader
+        if not isinstance(original.sampler, RandomSampler):
+            raise ValueError("SynLogic checkpoint recovery requires random sampling")
+        sampler = ResumableRandomSampler(original.dataset,
+            replacement=original.sampler.replacement,
+            num_samples=original.sampler.num_samples,
+            generator=original.sampler.generator)
+        self.train_dataloader = ResumableDataLoader(
+            dataset=original.dataset, batch_size=original.batch_size,
+            num_workers=original.num_workers, drop_last=original.drop_last,
+            collate_fn=original.collate_fn, sampler=sampler,
+            legacy_sampler_epoch=self.config.data.get("legacy_sampler_epoch"))
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if not isinstance(self.reward_fn, SynLogicRewardManager):

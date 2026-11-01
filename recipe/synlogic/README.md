@@ -92,6 +92,17 @@ after verifying their remote payloads, and
 preserve logging identities on resume. Operational files stay in ignored
 scratch or external run storage.
 
+`sampling.py` preserves the original seeded `torch.utils.data.RandomSampler`
+order and serializes its iterator and generator state. The framework's legacy
+loader saved only a cursor, which silently restarted its shuffle stream on
+later-pass resumes. Legacy checkpoints require an explicitly validated
+`+data.legacy_sampler_epoch=N`: the local shuffle-generator epoch at that save,
+which can differ from the global training epoch after an earlier legacy resume.
+Never infer this value from the global step alone. Verify it against the
+recorded producer trajectory before migration. New sampler checkpoints are
+self-contained and need no such override. Repairing future restores preserves
+the observed trajectory; it cannot undo prior repeats or omissions.
+
 The eighth card first probes the longest prompt, then measures frozen-base
 pass@k for k=1..256 using 256 responses per validation question. Report both
 original and disjoint splits. Derive matched 4k and extended 8k response-cap
