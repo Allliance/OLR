@@ -3,9 +3,9 @@ Experiment group: SynLogic-Easy fixed-label noise with OLR
 
 # Qwen3-4B-Base: SynLogic-Easy, 30% fixed noise and OLR
 
-Agent ID: —
-Machine ID: —
-W&B: Pending verified training startup.
+Agent ID: codex:synlogic-noise30-olr-20261107:/root
+Machine ID: machine:sha256:b658f544cc6b2f70861219809f19614c038f18e4dad79c97105c05512f65bfeb
+W&B: [Qwen3-4B-Base-SynLogic-noise30-OLR-s42-20261107](https://wandb.ai/alliance/Noisy-RLVR/runs/q3-synlogic-noise30-olr-s42-20261107-baseprompt) (remote run exists; optimizer/checkpoint startup validation pending).
 
 ## Goal
 
