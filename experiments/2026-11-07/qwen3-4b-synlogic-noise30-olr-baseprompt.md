@@ -33,7 +33,7 @@ This is direct finite single-experiment training supervision, as in the earlier 
 
 ## Main Finding (Running)
 
-CPU preparation and real dataset/configuration checks passed. GPU training has not started; no accuracy or verified-startup result is claimed.
+Training in progress; latest saved checkpoint 0/880 outer updates. One training GPU; validation data excluded from training. single_gpu_training_starting.
 
 ## Events
 
