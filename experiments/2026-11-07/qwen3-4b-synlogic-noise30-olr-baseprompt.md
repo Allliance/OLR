@@ -33,7 +33,7 @@ This is direct finite single-experiment training supervision, as in the earlier 
 
 ## Main Finding (Running)
 
-Training in progress; latest saved checkpoint 10/880 outer updates. One training GPU; validation data excluded from training. training_active.
+Training in progress; latest saved checkpoint 20/880 outer updates. One training GPU; validation data excluded from training. training_active.
 
 ## Events
 
@@ -41,6 +41,8 @@ Training in progress; latest saved checkpoint 10/880 outer updates. One training
 |---|---|---|---|
 | New run authorized | 2026-11-07, America/New_York | Prepare the requested one-GPU 30% noise + OLR run; remove benchmark overlaps, retain existing fixed labels and stopped runs. | Yes |
 
-Initial native accuracy is 2.4074% (2.5591% on the audited 254). Four outer updates completed with finite metrics, LR 1e-6 and 640 prompt histories. The first checkpoint passed full model/optimizer, five-Adam-step, RNG, scheduler, sampler and OLR-state validation. Its 16-file, 49.84-GB HF backup passed remote payload-hash verification. The first reference forward took 738 seconds during CPU-pinning initialization; the second took 31 seconds. Preserve the actually GPU-tested legacy reference CPU offload: peak GPU allocation was 204.3 GiB and reservation 259.7/288 GiB. No training restart occurred. Reuse the verified initial evaluation on recovery.
+Initial native accuracy is 2.4074% (2.5591% on the audited 254). Startup verification covered four outer updates with finite metrics, LR 1e-6 and 640 prompt histories. The first checkpoint passed full model/optimizer, five-Adam-step, RNG, scheduler, sampler and OLR-state validation. Its 16-file, 49.84-GB HF backup passed remote payload-hash verification. The first reference forward took 738 seconds during CPU-pinning initialization; the second took 31 seconds. Preserve the actually GPU-tested legacy reference CPU offload: peak GPU allocation was 204.3 GiB and reservation 259.7/288 GiB. No training restart occurred. Reuse the verified initial evaluation on recovery.
 
 Startup verified on gpu35 with exactly one exposed GPU, independent minute checks, 15-minute remote/resource checks, a two-second memory guard, and bounded recovery/publication. The allocation expires 2026-11-08 01:23 UTC; a nonoverlapping one-GPU replacement is prepared on gpu35/gpu36 only. Continue to update 880; actual checkpoint resume will be verified at the first natural handover.
+
+At update 20, held-out mean@8 accuracy reached 10.6019% on all 270 questions and 11.2697% on the validity-audited 254, versus initial 2.4074%/2.5591%. W&B API verified the actual metrics. This remains the fixed-30%-noise warmup: OLR selection is zero and starts at update 441. Checkpoint20 passed full finite-state validation with 100 Adam steps and 3,200 prompt observations; its HF publication is in progress. Evaluation took 227 seconds.
