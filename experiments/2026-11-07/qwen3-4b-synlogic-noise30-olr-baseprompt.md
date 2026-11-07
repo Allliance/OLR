@@ -5,7 +5,7 @@ Experiment group: SynLogic-Easy fixed-label noise with OLR
 
 Agent ID: codex:synlogic-noise30-olr-20261107:/root
 Machine ID: machine:sha256:b658f544cc6b2f70861219809f19614c038f18e4dad79c97105c05512f65bfeb
-W&B: [Qwen3-4B-Base-SynLogic-noise30-OLR-s42-20261107](https://wandb.ai/alliance/Noisy-RLVR/runs/q3-synlogic-noise30-olr-s42-20261107-baseprompt) (remote run exists; optimizer/checkpoint startup validation pending).
+W&B: [Qwen3-4B-Base-SynLogic-noise30-OLR-s42-20261107](https://wandb.ai/alliance/Noisy-RLVR/runs/q3-synlogic-noise30-olr-s42-20261107-baseprompt) (remote initial evaluation verified; optimizer/checkpoint startup validation pending).
 
 ## Goal
 
@@ -33,10 +33,12 @@ This is direct finite single-experiment training supervision, as in the earlier 
 
 ## Main Finding (Running)
 
-Training in progress; latest saved checkpoint 0/880 outer updates. One training GPU; validation data excluded from training. single_gpu_training_starting.
+Training in progress; latest saved checkpoint 0/880 outer updates. One training GPU; validation data excluded from training. training_active.
 
 ## Events
 
 | Event | Datetime | Action taken | Resolved |
 |---|---|---|---|
 | New run authorized | 2026-11-07, America/New_York | Prepare the requested one-GPU 30% noise + OLR run; remove benchmark overlaps, retain existing fixed labels and stopped runs. | Yes |
+
+The first attempt completed initial evaluation at 2.4074% native accuracy (2.5591% on the audited 254). Its first reference forward encountered about 13 minutes of CPU-pinning initialization because the backend forced reference CPU offload despite the false configuration setting. Initialization finished before the guarded cutover, so no restart occurred and the first optimizer update continued. A CPU-tested backend correction honors that explicit setting on the next natural recovery/handover; record actual execution revisions separately. Reuse the verified baseline evaluation on recovery.
