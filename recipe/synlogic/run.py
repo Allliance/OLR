@@ -8,7 +8,7 @@ from pathlib import Path
 import shlex
 import sys
 
-CONDITIONS = ("full-clean", "noise90", "noise70", "noise50",
+CONDITIONS = ("full-clean", "noise90", "noise70", "noise50", "noise30-olr",
               "noise90-olr", "noise70-olr", "noise50-olr")
 
 
@@ -42,7 +42,9 @@ def overrides(root, condition, framework_code):
     spec.loader.exec_module(module)
     base = condition.removesuffix("-olr")
     values = module.overrides(root, base)
+    metadata = prepared_metadata(root, condition)
     replacements = {
+        "+data.dataloader_num_workers": "0",
         "data.train_batch_size": "160", "data.gen_batch_size": "160",
         "data.max_prompt_length": "24576", "data.truncation": "error",
         "data.filter_overlong_prompts": "False",
@@ -61,8 +63,8 @@ def overrides(root, condition, framework_code):
         "actor_rollout_ref.rollout.val_kwargs.temperature": "0.6",
         "actor_rollout_ref.rollout.val_kwargs.top_p": "1.0",
         "reward_model.score_type": "acc_without_think_format",
-        "trainer.total_training_steps": "970", "trainer.total_epochs": "10000",
-        "trainer.experiment_name": f"Qwen3-4B-Base-SynLogic-{condition}-s42-baseprompt",
+        "trainer.total_training_steps": str(metadata["target_updates"]), "trainer.total_epochs": "10000",
+        "trainer.experiment_name": metadata["experiment_name"],
         "trainer.default_local_dir": str(root / "runs" / condition / "checkpoints"),
         "hydra.run.dir": str(root / "runs" / condition / "hydra"),
     }
@@ -72,16 +74,17 @@ def overrides(root, condition, framework_code):
             values[i] = key + "=" + replacements.pop(key)
     values += [key + "=" + value for key, value in replacements.items()]
     values += ["actor_rollout_ref.actor.kl_loss_type=low_var_kl",
+               "+data.apply_chat_template_kwargs={enable_thinking:false}",
                "actor_rollout_ref.rollout.do_sample=True",
                "+actor_rollout_ref.rollout.stop_token_ids=[151643,151645]",
                "+olr.enabled=" + str(condition.endswith("-olr")),
                "+olr.start_select_epoch=4", "+olr.slope_threshold=0.05"]
     audit = root / "supervision/split-overlap-audit.json"
     overlap = [item["validation_index"] for item in json.loads(audit.read_text())["records"]]
-    if len(overlap) != 36 or len(set(overlap)) != 36 or not all(0 <= i < 270 for i in overlap):
-        raise ValueError("The original split's 36 prompt overlaps must be explicitly audited")
+    if overlap or json.loads(audit.read_text()).get("overlap_count") != 0:
+        raise ValueError("Evaluation samples must be excluded from training")
     values.append("+evaluation.overlap_indices=" + json.dumps(overlap, separators=(",", ":")))
-    metadata = prepared_metadata(root, condition)
+    values.append("+evaluation.invalid_indices=[10,11,12,13,14,15,16,17,18,19,170,172,174,177,178,179]")
     values += ["+provenance.protocol_id=" + metadata["protocol_id"],
                "+provenance.prompt_template_sha256=" + metadata["prompt_template_sha256"]]
     return values

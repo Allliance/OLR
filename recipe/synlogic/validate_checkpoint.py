@@ -17,6 +17,7 @@ def require(condition, message):
 
 
 def main():
+    torch.set_num_threads(2)
     parser = argparse.ArgumentParser()
     parser.add_argument("checkpoint", type=Path)
     args = parser.parse_args()
@@ -66,13 +67,22 @@ def main():
         parameters = sum(t.numel() for t in model.values() if isinstance(t, torch.Tensor))
         require(3_900_000_000 <= parameters <= 4_600_000_000, f"Incomplete Qwen3-4B model: {parameters}")
         require(all(any(f"layers.{i}." in key for key in model) for i in range(36)), "Missing model layers")
+        def finite(tensor):
+            if not isinstance(tensor, torch.Tensor) or not tensor.is_floating_point():
+                return True
+            flat = tensor.reshape(-1)
+            return all(bool(torch.isfinite(flat[start:start + 1_000_000]).all())
+                       for start in range(0, flat.numel(), 1_000_000))
+        require(all(finite(tensor) for tensor in model.values()), "Non-finite model tensor")
         del model
         optimizer = torch.load(folder / "actor/optim_world_size_1_rank_0.pt", map_location="cpu",
                                weights_only=False, mmap=True)
         require(optimizer["state"] and optimizer["param_groups"], "Missing optimizer state")
         require(all(math.isfinite(g["lr"]) and g["lr"] > 0 for g in optimizer["param_groups"]), "Invalid LR")
         optimizer_states = len(optimizer["state"])
-        require(all(float(v["step"]) >= step for v in optimizer["state"].values()), "Old optimizer counters")
+        require(all(float(v["step"]) == 5 * step for v in optimizer["state"].values()), "Optimizer minibatch counters differ from five per outer update")
+        require(all(finite(tensor) for state in optimizer["state"].values() for tensor in state.values()),
+                "Non-finite optimizer tensor")
         del optimizer
     extra = torch.load(folder / "actor/extra_state_world_size_1_rank_0.pt", map_location="cpu", weights_only=False)
     require(extra.get("lr_scheduler") is not None and extra.get("rng"), "Missing scheduler or RNG")
@@ -81,6 +91,7 @@ def main():
     result = {"step": step, "validated": True, "model_parameters": parameters,
               "protocol_id": refinement["protocol_id"], "prompt_template_sha256": PINNED_TEMPLATE_SHA256,
               "optimizer_states": optimizer_states, "olr_prompt_visits": visits,
+              "optimizer_steps": 5 * step, "all_model_optimizer_tensors_finite": True,
               "components": ["model", "optimizer", "lr_scheduler", "rng", "dataloader", "olr_history"]}
     temporary = folder / "validated.tmp"
     temporary.write_text(json.dumps(result, indent=2) + "\n")

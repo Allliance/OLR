@@ -125,3 +125,7 @@ not study completion.
 
 Sources: [OLR paper](https://arxiv.org/abs/2604.03993),
 [released Qwen3 script](../../exp_script/run_qwen3-4B-base_noise_label_weak_use_olr.sh).
+
+## November 7: 30% noise extension
+
+[Protocol and current state](../../experiments/2026-11-07/qwen3-4b-synlogic-noise30-olr-baseprompt.md). This branch adds a fresh, one-GPU noise30-olr run with a benchmark-disjoint 14,117-row pool, 4,235 fixed wrong labels, explicit thinking-disabled Base ChatML prompts, 880 outer updates and OLR selection from update 441. The original validation set stays intact. The historical experiments above remain stopped; their checkpoints and data are unchanged. This branch does not resume their trajectories.

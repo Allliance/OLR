@@ -146,9 +146,9 @@ class SynLogicOLRTrainer(RayDAPOTrainer):
         temporary = folder / "olr_state.json.tmp"
         temporary.write_text(json.dumps(payload) + "\n")
         temporary.replace(folder / "olr_state.json")
-        if self.global_steps % 970 == 0:
+        if self.global_steps in {5 * len(self.train_dataloader), int(self.config.trainer.total_training_steps)}:
             (folder / "comparison.json").write_text(json.dumps({"step": self.global_steps,
-                                                               "block_updates": 970}) + "\n")
+                                                               "block_updates": int(self.config.trainer.total_training_steps)}) + "\n")
         # The native complete marker and recovery pointer are published only
         # after the refinement state and every model/optimizer shard exist.
         super()._save_checkpoint()
@@ -176,12 +176,17 @@ class SynLogicOLRTrainer(RayDAPOTrainer):
             raise ValueError(f"Expected all 27 held-out puzzle tasks, received {len(values)}")
         metrics["val-core/synlogic/reward/mean@8"] = sum(values) / len(values)
         overlap = set(self.config.evaluation.overlap_indices)
-        if len(overlap) != 36:
-            raise ValueError("The disjoint metric requires the original 36-question overlap audit")
+        if overlap:
+            raise ValueError("Training must exclude all held-out evaluation examples")
         scores = [score for index, score in self.val_reward_fn.records if index not in overlap]
         if len(scores) != (270 - len(overlap)) * 8:
             raise ValueError("Disjoint validation rows or response counts are incomplete")
         metrics["val-core/synlogic-disjoint/reward/mean@8"] = sum(scores) / len(scores)
+        invalid = set(self.config.evaluation.invalid_indices)
+        audited = [score for index, score in self.val_reward_fn.records if index not in invalid]
+        if len(invalid) != 16 or len(audited) != 254 * 8:
+            raise ValueError("Audited validation rows or response counts are incomplete")
+        metrics["val-core/synlogic-audited/reward/mean@8"] = sum(audited) / len(audited)
         return metrics
 
     def fit(self):
