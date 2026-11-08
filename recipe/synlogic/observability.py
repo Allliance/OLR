@@ -108,16 +108,16 @@ def noisy_metrics(advantages, response_mask, uids, records):
 
 
 def snapshot_due(step, frequency, total_steps):
-    # The batch is captured before this optimizer update and its scheduled eval.
-    return 1 <= step <= total_steps and frequency > 0 and (
-        step % frequency == 0 or step == total_steps)
+    next_step = step + 1
+    return step >= 1 and frequency > 0 and next_step <= total_steps and (
+        next_step % frequency == 0 or next_step == total_steps)
 
 
 @torch.no_grad()
 def snapshot_payload(batch, records, prompt_registry, tokenizer, metadata):
     required = {"prompts", "responses", "attention_mask", "response_mask", "advantages",
                 "token_level_rewards", "token_level_scores"}
-    assert required <= set(batch.batch), "Full rollout tensors are unavailable"
+    assert required <= set(batch.batch.keys()), "Full rollout tensors are unavailable"
     tensors = {key: value.detach().cpu() for key, value in batch.batch.items()}
     uids = [str(uid) for uid in batch.non_tensor_batch["uid"]]
     observations = {row["native_group_uid"]: row for row in records}
@@ -139,7 +139,8 @@ def snapshot_payload(batch, records, prompt_registry, tokenizer, metadata):
                 "native_group_uid": uid,
                 "prompt_text": tokenizer.decode(tensors["prompts"][i][prompt_mask], skip_special_tokens=False),
                 "frozen_assigned_label": plain(batch.non_tensor_batch["reward_model"][i]["ground_truth"]),
-                "effective_target_mode": "fixed_wrong_answer" if row["selected"] else ("fixed_wrong_answer" if row["original_noisy"] else "original_verifier"),
+                "effective_target_mode": "olr_selected_majority" if row["selected"] else ("frozen_corrupted_label" if row["original_noisy"] else "original_verifier"),
+                "reward_manager_target_mode": "fixed_wrong_answer" if row["selected"] or row["original_noisy"] else "original_verifier",
                 "effective_assigned_answer_key": row["answer_key"] if row["selected"] else row["original_assigned_answer_key"],
                 "olr_selected": row["selected"], "olr_answer_key": row["answer_key"],
                 "olr_slope": row["slope"], "olr_majority_rate": row["majority_rate"], "visit": row["visits"]}
@@ -156,7 +157,10 @@ def snapshot_payload(batch, records, prompt_registry, tokenizer, metadata):
             "answer_key": row["answer_keys"][original_index],
             "canonical_key_error": row["canonical_key_errors"][original_index],
             "native_original_verifier_correct": row["native_rollout_correct"][original_index],
-            "original_verifier_error": row["verification_errors"][original_index]})
+            "original_verifier_error": row["verification_errors"][original_index],
+            "training_verifier_status_available": row.get("training_verifier_status_available", False),
+            "training_verifier_timed_out": row.get("training_verifier_timed_out", [None]*len(row["raw_answers"]))[original_index],
+            "training_verifier_unverified": row.get("training_verifier_unverified", [None]*len(row["raw_answers"]))[original_index]})
     assert len({row["rollout_id"] for row in rollouts}) == len(uids), "Rollout IDs collide"
     return {"schema_version": 1, "kind": "complete_training_rollouts", "metadata": plain(metadata),
             "tensors": tensors, "uids": uids, "groups": groups, "rollouts": rollouts,
@@ -177,7 +181,7 @@ def write_snapshot(root, step, payload):
         stream.flush()
         os.fsync(stream.fileno())
     manifest = {"schema_version": 1, "kind": "complete_training_rollouts", "training_update": step,
-                "policy_update": payload["metadata"]["policy_update"], "scheduled_evaluation_update": step,
+                "policy_update": payload["metadata"]["policy_update"], "scheduled_evaluation_update": step + 1,
                 "rollout_complete": True, "groups": len(payload["groups"]),
                 "rollouts": len(payload["rollouts"]), "sha256": file_digest(archive),
                 "bytes": archive.stat().st_size,

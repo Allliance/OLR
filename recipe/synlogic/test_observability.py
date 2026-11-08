@@ -17,7 +17,7 @@ from .observability import (commit_snapshot, file_digest, noisy_metrics, plain, 
                             snapshot_payload, token_digest, validate_snapshot, write_snapshot)
 
 
-def fixture():
+def fixture(real=False):
     uids = ["clean", "clean", "n1", "n1", "n2", "n2"]
     responses = torch.tensor([[101+i, 201+i, 0] for i in range(6)])
     mask = torch.tensor([[1, 1, 0]] * 6)
@@ -47,6 +47,11 @@ def fixture():
     batch = SimpleNamespace(batch={key: value[permutation].clone() for key, value in tensors.items()},
         non_tensor_batch={"uid": np.array([uids[i] for i in permutation], dtype=object),
                           "reward_model": [{"ground_truth": "frozen"} for _ in permutation]})
+    if real:
+        from tensordict import TensorDict
+        from verl import DataProto
+        batch = DataProto(batch=TensorDict(batch.batch, batch_size=[6]),
+                          non_tensor_batch={key: np.array(value, dtype=object) for key, value in batch.non_tensor_batch.items()})
     tokenizer = SimpleNamespace(decode=lambda ids, **kwargs: ",".join(map(str, ids.tolist())))
     metadata = {"protocol_id": "toy", "training_update": 19, "policy_update": 18,
                 "allocation_id": "cpu-fixture", "attempt": "unit-test", "configuration": {"lr": 1e-6}}
@@ -57,28 +62,50 @@ class ObservabilityTests(unittest.TestCase):
     def test_trainer_capture_and_optimizer_commit_are_separate(self):
         from omegaconf import OmegaConf
         from .trainer import SynLogicOLRTrainer
-        batch, records, registry, tokenizer, _ = fixture()
+        batch, records, registry, tokenizer, _ = fixture(real=True)
         original = {key: value.clone() for key, value in batch.batch.items()}
         with tempfile.TemporaryDirectory() as directory:
             subject = object.__new__(SynLogicOLRTrainer)
             subject.config = OmegaConf.create({"trainer": {"default_local_dir": directory + "/checkpoints", "test_freq": 20},
                 "provenance": {"protocol_id": "cpu-test"}})
-            subject.global_steps, subject.total_training_steps = 20, 880
-            subject._observation_resume_step = 19
+            subject.global_steps, subject.total_training_steps = 19, 880
+            subject._observation_resume_step = 18
             subject._progress = lambda *_: None
-            subject.reward_fn = SimpleNamespace(correctness={"batches": [{"training_update": 20, "records": records}],
+            subject.reward_fn = SimpleNamespace(correctness={"batches": [{"training_update": 19, "records": records}],
                 "prompts": registry}, reward=SimpleNamespace(tokenizer=tokenizer))
             with patch.dict("os.environ", {"SYNLOGIC_ATTEMPT": "cpu-test"}):
                 metrics = subject._observe_training_batch(batch)
                 self.assertEqual(len(metrics), 21)
-                path = Path(directory)/"training_rollouts/attempt_cpu-test/snapshots/global_step_20"
+                path = Path(directory)/"training_rollouts/attempt_cpu-test/snapshots/global_step_19"
                 self.assertTrue((path/"complete.json").exists())
                 self.assertFalse((path/"committed.json").exists())
                 subject._training_update_observed(batch)
                 self.assertTrue((path/"committed.json").exists())
-                self.assertEqual(validate_snapshot(path)["step"], 20)
+                self.assertEqual(validate_snapshot(path)["step"], 19)
             for key, value in original.items():
                 self.assertTrue(torch.equal(batch.batch[key], value))
+
+    def test_native_reward_status_is_per_rollout_without_changing_scores(self):
+        from src.syn_logic_reward import SynLogicRewardManager
+        batch, *_ = fixture(real=True)
+        batch.non_tensor_batch["data_source"] = np.array(["toy"]*6, dtype=object)
+        batch.non_tensor_batch["extra_info"] = np.array([{}]*6, dtype=object)
+        tokenizer = SimpleNamespace(eos_token="<eos>", decode=lambda ids, **_: str(ids.tolist()))
+        subject = SynLogicRewardManager(tokenizer, 0, max_resp_len=3,
+            overlong_buffer_cfg=SimpleNamespace(enable=False))
+        count = []
+        def score(**kwargs):
+            i = len(count)
+            kwargs["extra_info"]["verifier_timed_out"] = i == 1
+            kwargs["extra_info"]["verifier_unverified"] = i == 4
+            count.append(i)
+            return float(i % 2)
+        subject.compute_score = score
+        result = subject(batch, return_dict=True)
+        self.assertEqual(result["reward_tensor"].sum(-1).tolist(), [0., 1., 0., 1., 0., 1.])
+        self.assertEqual(result["reward_extra_info"]["training_verifier_timed_out"], [False, True, False, False, False, False])
+        self.assertEqual(result["reward_extra_info"]["training_verifier_unverified"], [False, False, False, False, True, False])
+        self.assertTrue(all(not info for info in batch.non_tensor_batch["extra_info"]))
 
     def test_actual_masked_advantages_and_coverage(self):
         batch, records, *_ = fixture()
@@ -115,11 +142,11 @@ class ObservabilityTests(unittest.TestCase):
             noisy_metrics(batch.batch["advantages"], batch.batch["response_mask"], batch.non_tensor_batch["uid"], records)
 
     def test_snapshot_precedes_evaluation(self):
-        self.assertTrue(snapshot_due(20, 20, 880))
-        self.assertTrue(snapshot_due(880, 20, 880))
-        self.assertFalse(snapshot_due(19, 20, 880))
+        self.assertTrue(snapshot_due(19, 20, 880))
+        self.assertTrue(snapshot_due(879, 20, 880))
+        self.assertFalse(snapshot_due(20, 20, 880))
         self.assertFalse(snapshot_due(0, 20, 880))
-        self.assertFalse(snapshot_due(879, 20, 880))
+        self.assertFalse(snapshot_due(880, 20, 880))
 
     def test_full_snapshot_is_lossless_atomic_committed_and_replay_safe(self):
         batch, records, registry, tokenizer, metadata = fixture()

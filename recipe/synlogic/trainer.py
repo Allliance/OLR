@@ -113,6 +113,12 @@ class RefinementReward:
             result = self.reward(data, return_dict=True)
             for record, indices in zip(diagnostic_inputs, groups.values()):
                 record["training_rewards"] = [float(result["reward_tensor"][i].sum()) for i in indices]
+                statuses = result.get("reward_extra_info", {})
+                record["training_verifier_status_available"] = all(
+                    key in statuses and len(statuses[key]) == len(data)
+                    for key in ("training_verifier_timed_out", "training_verifier_unverified"))
+                for key in ("training_verifier_timed_out", "training_verifier_unverified"):
+                    record[key] = [bool(statuses[key][i]) for i in indices] if record["training_verifier_status_available"] else [None]*len(indices)
             def verify_original(task, game, answer):
                 try:
                     with verifier_deadline():
@@ -232,6 +238,10 @@ class SynLogicOLRTrainer(RayDAPOTrainer):
                 raise ValueError("Diagnostic coverage has unrecorded internal updates")
             self.reward_fn.correctness = diagnostic
         self._observation_resume_step = self.global_steps
+        if os.environ.get("SYNLOGIC_RUN_ROOT"):
+            attempt = os.environ["SYNLOGIC_ATTEMPT"]
+            if (Path(self.config.trainer.default_local_dir).parent / "training_rollouts" / f"attempt_{attempt}").exists():
+                raise RuntimeError("A recovery must use a fresh execution attempt; preserve previous observations")
         return result
 
     def _observe_training_batch(self, batch):
@@ -252,19 +262,23 @@ class SynLogicOLRTrainer(RayDAPOTrainer):
         self.reward_fn.correctness.setdefault("noise_metrics_missing_through_step", self._observation_resume_step)
         root = Path(self.config.trainer.default_local_dir).parent
         if not hasattr(self, "_rollout_provenance"):
-            attempt = os.environ.get("SYNLOGIC_ATTEMPT", "unknown")
+            attempt = os.environ["SYNLOGIC_ATTEMPT"]
             self._rollout_attempt_root = root / "training_rollouts" / f"attempt_{attempt}"
             configuration = plain(OmegaConf.to_container(self.config, resolve=True))
             paths = {"recipe/synlogic/trainer.py": Path(__file__),
                      "recipe/synlogic/diagnostics.py": Path(diagnose.__code__.co_filename),
                      "recipe/synlogic/observability.py": Path(snapshot_payload.__code__.co_filename),
-                     "src/dapo_ray_trainer.py": Path(inspect.getsourcefile(RayDAPOTrainer))}
+                     "src/dapo_ray_trainer.py": Path(inspect.getsourcefile(RayDAPOTrainer)),
+                     "src/syn_logic_reward.py": Path(inspect.getsourcefile(SynLogicRewardManager))}
             revisions = {}
             for name, repository in (("OLR", Path(__file__).resolve().parents[2]),
                                      ("backend", paths["src/dapo_ray_trainer.py"].resolve().parents[1])):
-                result = subprocess.run(["git", "-C", str(repository), "rev-parse", "HEAD"],
-                                        capture_output=True, text=True, timeout=10)
-                revisions[name] = result.stdout.strip() if result.returncode == 0 else None
+                try:
+                    result = subprocess.run(["git", "-C", str(repository), "rev-parse", "HEAD"],
+                                            capture_output=True, text=True, timeout=10)
+                    revisions[name] = result.stdout.strip() if result.returncode == 0 else None
+                except (OSError, subprocess.TimeoutExpired):
+                    revisions[name] = None
             portable = root / "portable-provenance.json"
             self._rollout_provenance = {
                 "kind": "periodic_training_rollouts", "schema_version": 1,
@@ -272,7 +286,7 @@ class SynLogicOLRTrainer(RayDAPOTrainer):
                 "allocation_id": os.environ.get("SYNLOGIC_ALLOCATION_ID"), "attempt": attempt,
                 "resume_checkpoint_step": self._observation_resume_step,
                 "noise_metrics_missing_through_step": self.reward_fn.correctness["noise_metrics_missing_through_step"],
-                "snapshot_alignment": "rollouts_before_optimizer_update_and_its_scheduled_evaluation",
+                "snapshot_alignment": "training_update_immediately_before_scheduled_evaluation_update",
                 "configuration": configuration,
                 "configuration_sha256": hashlib.sha256(json.dumps(configuration, sort_keys=True).encode()).hexdigest(),
                 "source_revisions": revisions,
@@ -289,7 +303,7 @@ class SynLogicOLRTrainer(RayDAPOTrainer):
         atomic_json(self._rollout_attempt_root / "metrics" / f"step_{step}.json", envelope)
         if snapshot_due(step, int(self.config.trainer.test_freq), int(self.total_training_steps)):
             metadata = {**self._rollout_provenance, "training_update": step, "policy_update": step - 1,
-                        "scheduled_evaluation_update": step, "observation_time_unix": time.time()}
+                        "scheduled_evaluation_update": step + 1, "observation_time_unix": time.time()}
             payload = snapshot_payload(batch, records, self.reward_fn.correctness["prompts"],
                                        self.reward_fn.reward.tokenizer, metadata)
             self._pending_rollout_snapshot = write_snapshot(self._rollout_attempt_root / "snapshots", step, payload)
