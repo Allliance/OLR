@@ -197,14 +197,17 @@ class RolloutObserver:
             'noisy_question_group_active_rate':rate(active,len(noisy)),
             'noisy_rollout_assigned_label_match_rate':rate(assigned_n,assigned_d),
             'noisy_rollout_original_verifier_correctness_rate':rate(native_n,native_d),
-            'assigned_label_coverage':rate(assigned_d,noisy_rollouts),
-            'original_verifier_coverage':rate(native_d,noisy_rollouts)}
+            'assigned_label_scoring_coverage':rate(assigned_d,noisy_rollouts),
+            'original_reference_scoring_coverage':rate(native_d,noisy_rollouts),
+            'original_verifier_success_coverage':rate(native_d-parse_fail,noisy_rollouts)}
         for name,value in diagnostics.items():
             for field in ['numerator','denominator','defined']:metrics[f'noise/{name}/{field}']=int(value[field])
             if value['defined']:metrics[f'noise/{name}']=value['value']
         metrics.update({'noise/question_groups':len(groups),'noise/noisy_question_groups':len(noisy),
                         'noise/noisy_rollouts':noisy_rollouts,'noise/assigned_verifier_failures':assigned_fail,
-                        'noise/original_verifier_failures':native_fail,'noise/parse_failures':parse_fail})
+                        'noise/original_verifier_failures':native_fail,'noise/parse_failures':parse_fail,
+                        'noise/original_verifier_successes':native_d-parse_fail,
+                        'noise/original_reference_evaluated_rollouts':native_d})
         frequency=int(self.trainer.config.trainer.test_freq)
         target=int(getattr(self.trainer,'total_training_steps',None) or self.trainer.config.trainer.total_training_steps)
         save=frequency>0 and ((step+1)%frequency==0 or step+1==target)
@@ -238,6 +241,7 @@ class RolloutObserver:
             'configuration':configuration,'configuration_sha256':hashlib.sha256(encoded(configuration)).hexdigest(),
             'source_provenance':provenance,'diagnostics':diagnostics,
             'assigned_match_definition':'Frozen dataset assigned target, before OLR replacement',
+            'scoring_coverage_definition':'Unparseable responses are known incorrect; verifier errors are unknown. Native verifier successes exclude parse failures.',
             'active_definition':'Any exactly nonzero advantage at a valid response token within a noisy group'}
         payload={'metadata':plain(metadata),'rows':plain(rows),
                  'tensors':{key:value.detach().cpu().clone() for key,value in tensors.items()}}

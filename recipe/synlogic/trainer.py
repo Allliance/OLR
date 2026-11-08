@@ -87,17 +87,19 @@ class RefinementReward:
                         target["ground_truth"] = decision["answer_key"]
                         data.non_tensor_batch["reward_model"][i] = target
             result = self.reward(data, return_dict=True)
-            for indices in groups.values():
-                i = indices[0]
-                self.trainer.rollout_observer.freeze(step, data.non_tensor_batch['uid'][i],
-                    data.non_tensor_batch['data_source'][i], old_extras[i], old_targets[i],
-                    data.non_tensor_batch['extra_info'][i], data.non_tensor_batch['reward_model'][i])
+            effective_extras = data.non_tensor_batch['extra_info'].copy()
+            effective_targets = data.non_tensor_batch['reward_model'].copy()
         except BaseException:
             self.refiner.load_state_dict(previous)
             raise
         finally:
             data.non_tensor_batch["extra_info"] = old_extras
             data.non_tensor_batch["reward_model"] = old_targets
+        for indices in groups.values():
+            i = indices[0]
+            self.trainer.rollout_observer.freeze(step, data.non_tensor_batch['uid'][i],
+                data.non_tensor_batch['data_source'][i], old_extras[i], old_targets[i],
+                effective_extras[i], effective_targets[i])
         self.last_step = step
         count = len(observations)
         self.metrics = {
@@ -167,6 +169,7 @@ class SynLogicOLRTrainer(RayDAPOTrainer):
 
     def _load_checkpoint(self):
         result = super()._load_checkpoint()
+        self.rollout_observer.resumed_from_step = int(self.global_steps)
         if self.global_steps:
             folder = Path(self.config.trainer.default_local_dir) / f"global_step_{self.global_steps}"
             state = json.loads((folder / "olr_state.json").read_text())
