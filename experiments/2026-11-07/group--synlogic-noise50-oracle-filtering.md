@@ -31,10 +31,12 @@ This is direct finite experiment supervision in the OLR project, whose shared or
 
 ## Main Finding (Running)
 
-Training in progress: 20/440 completed outer updates; latest native checkpoint 20. Native validation at step 20: 13.94% mean accuracy on all 270 questions with eight responses each, versus cached Base 2.41%. Two training GPUs on gpu35/gpu36 only; benchmark evaluation examples excluded from training. training_active.
+Training in progress: 85/440 completed outer updates on 7,062 retained clean prompts, with OLR disabled. Latest validated native checkpoint: 80. Native validation at step 80 reached 27.27% mean accuracy on all 270 questions with eight responses each, versus cached Base 2.41%. Two training GPUs on gpu35/gpu36 only; known benchmark collisions are excluded. KOR Logic/Cipher evaluation remains pending until final checkpoint 440. HF publication is blocked by the account public-storage quota; last successful remote checkpoint is 50.
 
 ## Events
 
 | Event | Datetime | Action taken | Resolved |
 |---|---|---|---|
 | Oracle-discard experiment authorized | 2026-11-07T22:04:41-05:00 | Preserve original mask, exclude benchmark collisions, stage a fresh Base run for ten passes on two GPUs. | Yes |
+| Pre-evaluation rollout preservation verified | 2026-11-08T08:54:58.564977+00:00 | Resumed after checkpoint 70 without dropping completed updates; verified full checkpoint 80 and all 1,280 saved rollouts. Snapshots begin at step 80; earlier rollouts are unavailable. | Yes |
+| HF public-storage quota blocks publication | 2026-11-08T08:35:35+00:00 | Keep two validated local checkpoints and the verified remote checkpoint 50; latch failed uploads. Final KOR evaluation is independent of remote-backup completion. | No |
