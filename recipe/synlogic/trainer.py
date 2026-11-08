@@ -10,6 +10,7 @@ from src.fixed_labels import answer_key, extract_answer
 from src.syn_logic_reward import SynLogicRewardManager, TaskDeadlineExceeded, verifier_classes, verifier_deadline
 
 from .refinement import OnlineLabelRefiner
+from .observability import RolloutObserver
 
 
 class ValidationRecorder:
@@ -86,6 +87,11 @@ class RefinementReward:
                         target["ground_truth"] = decision["answer_key"]
                         data.non_tensor_batch["reward_model"][i] = target
             result = self.reward(data, return_dict=True)
+            for indices in groups.values():
+                i = indices[0]
+                self.trainer.rollout_observer.freeze(step, data.non_tensor_batch['uid'][i],
+                    data.non_tensor_batch['data_source'][i], old_extras[i], old_targets[i],
+                    data.non_tensor_batch['extra_info'][i], data.non_tensor_batch['reward_model'][i])
         except BaseException:
             self.refiner.load_state_dict(previous)
             raise
@@ -135,8 +141,14 @@ class SynLogicOLRTrainer(RayDAPOTrainer):
             raise TypeError("The SynLogic refiner requires the native puzzle reward manager")
         self.reward_fn = RefinementReward(self, self.reward_fn)
         self.val_reward_fn = ValidationRecorder(self.val_reward_fn)
+        self.rollout_observer = RolloutObserver(self)
+
+    def _observe_training_batch(self, batch, metrics):
+        self.rollout_observer.observe(batch, metrics)
+
 
     def _save_checkpoint(self):
+        self.rollout_observer.flush()
         folder = Path(self.config.trainer.default_local_dir) / f"global_step_{self.global_steps}"
         folder.mkdir(parents=True, exist_ok=True)
         payload = {"step": self.global_steps, "last_reward_step": self.reward_fn.last_step,
@@ -205,3 +217,4 @@ class SynLogicOLRTrainer(RayDAPOTrainer):
             return super().fit()
         finally:
             tracking.Tracking = original
+            self.rollout_observer.close()
