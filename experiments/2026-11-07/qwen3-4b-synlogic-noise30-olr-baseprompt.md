@@ -33,7 +33,7 @@ This is direct finite single-experiment training supervision, as in the earlier 
 
 ## Main Finding (Running)
 
-Training in progress; latest saved checkpoint 200/880 outer updates. One training GPU; validation data excluded from training. training_active.
+Training in progress; latest saved checkpoint 300/880 outer updates. One training GPU; validation data excluded from training. training_active.
 
 ## Events
 
