@@ -210,7 +210,7 @@ class RolloutObserver:
                         'noise/original_reference_evaluated_rollouts':native_d})
         frequency=int(self.trainer.config.trainer.test_freq)
         target=int(getattr(self.trainer,'total_training_steps',None) or self.trainer.config.trainer.total_training_steps)
-        save=frequency>0 and ((step+1)%frequency==0 or step+1==target)
+        save=frequency>0 and (step%frequency==0 or step==target)
         metrics['observability/snapshot_scheduled']=int(save)
         if not save:return
         if self.pending is not None:self.pending.result()
@@ -234,7 +234,7 @@ class RolloutObserver:
         assert len(rows)==len(batch) and len({r['rollout_id'] for r in rows})==len(rows)
         metadata={'schema_version':1,'execution_id':self.execution,'training_step':step,
             'update_version':int(getattr(self.trainer,'_completed_updates',step)),
-            'rollout_policy_version':self.rollout_policy_version,'next_scheduled_evaluation':step+1,
+            'rollout_policy_version':self.rollout_policy_version,'evaluation_step':step,
             'resumed_from_step':self.resumed_from_step,
             'protocol_id':str(self.trainer.config.provenance.protocol_id),
             'expected_rollouts':expected_groups*expected,'expected_groups':expected_groups,'rollouts_per_group':expected,
