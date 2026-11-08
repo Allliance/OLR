@@ -31,7 +31,7 @@ This is direct finite experiment supervision in the OLR project, whose shared or
 
 ## Main Finding (Running)
 
-Training in progress: 1/440 completed outer updates; latest native checkpoint 1. Two training GPUs on gpu35/gpu36 only; benchmark evaluation examples excluded from training. training_active.
+Training in progress: 10/440 completed outer updates; latest native checkpoint 10. Two training GPUs on gpu35/gpu36 only; benchmark evaluation examples excluded from training. training_active.
 
 ## Events
 
