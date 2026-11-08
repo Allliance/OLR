@@ -6,6 +6,9 @@ def require(value,message):
     if not value:raise ValueError(message)
 
 def worker(folder):
+    parent=os.getppid()
+    require(ctypes.CDLL(None).prctl(1,signal.SIGKILL)==0,'Cannot bind validator worker lifetime')
+    require(os.getppid()==parent,'Validator launcher exited during worker startup')
     import torch
     import torch.distributed as dist
     from torch.distributed.tensor import DTensor
@@ -80,7 +83,9 @@ def worker(folder):
             'all_model_optimizer_tensors_finite':True,
             'components':['model','optimizer','lr_scheduler','rng','dataloader','olr_history']
                          +(['sampler'] if '_synlogic_sampler' in loader else [])}
-        tmp=folder/'validated.tmp';tmp.write_text(json.dumps(result,indent=2)+'\n');tmp.replace(folder/'validated.json')
+        proof=Path(os.environ['SYNLOGIC_VALIDATION_PROOF'])
+        require(proof.parent==folder,'Unexpected validation proof location')
+        proof.write_text(json.dumps(result,indent=2)+'\n')
         print(json.dumps(result),flush=True)
     dist.barrier();dist.destroy_process_group()
 
@@ -110,7 +115,10 @@ def main():
                 and proof['protocol_id']==state['protocol_id']
                 and proof['prompt_template_sha256']==PINNED_TEMPLATE_SHA256,'Invalid existing proof')
         return
-    env={**os.environ,'ROCR_VISIBLE_DEVICES':'','HIP_VISIBLE_DEVICES':'','CUDA_VISIBLE_DEVICES':'','OMP_NUM_THREADS':'2'}
+    pending=folder/f'.validated-proof-{os.getpid()}.json'
+    pending.unlink(missing_ok=True)
+    env={**os.environ,'ROCR_VISIBLE_DEVICES':'','HIP_VISIBLE_DEVICES':'','CUDA_VISIBLE_DEVICES':'','OMP_NUM_THREADS':'2',
+         'SYNLOGIC_VALIDATION_PROOF':str(pending)}
     command=[sys.executable,'-m','torch.distributed.run','--standalone',f'--nproc_per_node={world}',str(Path(__file__).resolve()),str(folder),'--worker']
     process=subprocess.Popen(command,env=env,start_new_session=True)
     try:code=process.wait(timeout=1800)
@@ -119,7 +127,14 @@ def main():
         try:process.wait(timeout=30)
         except subprocess.TimeoutExpired:
             os.killpg(process.pid,signal.SIGKILL);process.wait()
+        pending.unlink(missing_ok=True)
         raise RuntimeError('CPU checkpoint validation exceeded its bounded deadline') from None
-    if code:raise subprocess.CalledProcessError(code,command)
+    if code:
+        pending.unlink(missing_ok=True)
+        raise subprocess.CalledProcessError(code,command)
+    proof=json.loads(pending.read_text())
+    require(proof['validated'] and proof['step']==step and proof['world_size']==world
+            and proof['protocol_id']==state['protocol_id'],'Invalid worker proof')
+    pending.replace(marker)
 
 if __name__=='__main__':main()
