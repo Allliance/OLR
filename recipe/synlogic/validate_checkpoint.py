@@ -45,6 +45,31 @@ def validate_correctness(refinement, step):
             require(all(value is None or type(value) is bool for value in row["native_rollout_correct"])
                     and (row["native_majority_correct"] is None or type(row["native_majority_correct"]) is bool),
                     "Invalid native correctness verdict")
+        noise_missing = diagnostic.get("noise_metrics_missing_through_step")
+        if noise_missing is not None and batch["training_update"] > noise_missing:
+            require(batch.get("optimizer_update_completed") is True, "Uncommitted training observation")
+            metrics = batch["noise_metrics"]
+            noisy = [row for row in batch["records"] if row["original_noisy"]]
+            expected = {
+                "noisy_group_active": (None, len(noisy), len(noisy)),
+                "noisy_rollout_assigned_label_match": (
+                    sum(key == row["original_assigned_answer_key"] and error is None for row in noisy
+                        for key, error in zip(row["answer_keys"], row["canonical_key_errors"])),
+                    sum(error is None for row in noisy for error in row["canonical_key_errors"]), 8 * len(noisy)),
+                "noisy_rollout_original_verifier_correctness": (
+                    sum(value is True for row in noisy for value in row["native_rollout_correct"]),
+                    sum(value is not None for row in noisy for value in row["native_rollout_correct"]), 8 * len(noisy)),
+            }
+            for name, (numerator, denominator, eligible) in expected.items():
+                prefix = "noise/" + name + "/"
+                actual = metrics[prefix + "numerator"]
+                require(0 <= actual <= denominator and (numerator is None or actual == numerator), "Noise numerator mismatch")
+                require(metrics[prefix + "denominator"] == denominator and metrics[prefix + "eligible"] == eligible
+                        and metrics[prefix + "failures"] == eligible - denominator, "Noise coverage mismatch")
+                require(metrics[prefix + "rate"] == (actual / denominator if denominator else None)
+                        and metrics[prefix + "rate_defined"] == int(denominator > 0)
+                        and metrics[prefix + "coverage"] == (denominator / eligible if eligible else None),
+                        "Undefined or incorrect noise rate")
     return {"early_correctness_missing_through_step": missing,
             "early_correctness_records": len(batches) * 160}
 

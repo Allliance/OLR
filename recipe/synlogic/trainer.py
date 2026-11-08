@@ -5,6 +5,7 @@ from copy import deepcopy
 import hashlib
 import json
 import os
+import time
 from pathlib import Path
 
 from src.dapo_ray_trainer import RayDAPOTrainer
@@ -13,6 +14,7 @@ from src.syn_logic_reward import Data, SynLogicRewardManager, TaskDeadlineExceed
 
 from .refinement import OnlineLabelRefiner
 from .diagnostics import diagnose
+from .observability import atomic_json, commit_snapshot, noisy_metrics, plain, snapshot_due, snapshot_payload, token_digest, write_snapshot
 
 
 class ValidationRecorder:
@@ -62,7 +64,7 @@ class RefinementReward:
         old_extras = data.non_tensor_batch["extra_info"].copy()
         old_targets = data.non_tensor_batch["reward_model"].copy()
         try:
-            for indices in groups.values():
+            for uid, indices in groups.items():
                 first = data[indices[0]]
                 extra = first.non_tensor_batch["extra_info"]
                 task = first.non_tensor_batch["data_source"]
@@ -71,6 +73,7 @@ class RefinementReward:
                 verifier = verifier_classes[task]()
                 keys = []
                 raw_answers = []
+                key_errors, response_fingerprints = [], []
                 for i in indices:
                     item = data[i]
                     prompt_length = item.batch["prompts"].shape[-1]
@@ -78,12 +81,16 @@ class RefinementReward:
                     text = self.reward.tokenizer.decode(item.batch["responses"][:length], skip_special_tokens=True)
                     extracted = extract_answer(text)
                     raw_answers.append(extracted)
+                    response_fingerprints.append(token_digest(item.batch["responses"][:length]))
+                    key_error = None
                     try:
                         with verifier_deadline():
                             key = answer_key(extracted, verifier)
-                    except (Exception, TaskDeadlineExceeded):
+                    except (Exception, TaskDeadlineExceeded) as error:
                         key = None
+                        key_error = type(error).__name__
                     keys.append(key)
+                    key_errors.append(key_error)
                     extracted_count += key is not None
                 decision = self.refiner.observe(extra["index"], keys, epoch)
                 observations.append(decision)
@@ -93,6 +100,8 @@ class RefinementReward:
                     "original_assigned_answer_key": extra.get("assigned_answer_key"),
                     "original_game_data_str": extra.get("original_game_data_str") or extra["game_data_str"],
                     "raw_answers": raw_answers, "answer_keys": keys, **decision})
+                diagnostic_inputs[-1].update(native_group_uid=str(uid), canonical_key_errors=key_errors,
+                    response_token_sha256=response_fingerprints)
                 if decision["selected"]:
                     for i in indices:
                         current = deepcopy(data.non_tensor_batch["extra_info"][i])
@@ -222,7 +231,80 @@ class SynLogicOLRTrainer(RayDAPOTrainer):
                     range(diagnostic["missing_through_step"] + 1, self.global_steps + 1)):
                 raise ValueError("Diagnostic coverage has unrecorded internal updates")
             self.reward_fn.correctness = diagnostic
+        self._observation_resume_step = self.global_steps
         return result
+
+    def _observe_training_batch(self, batch):
+        """Read actual masked advantages after their computation, never modify them."""
+        from omegaconf import OmegaConf
+        import inspect
+        import subprocess
+
+        self._progress("observing_rollouts")
+        step = self.global_steps
+        current = self.reward_fn.correctness["batches"][-1]
+        if current["training_update"] != step:
+            raise RuntimeError("Observation and generated rollout versions disagree")
+        records = current["records"]
+        metrics = noisy_metrics(batch.batch["advantages"], batch.batch["response_mask"],
+                                batch.non_tensor_batch["uid"], records)
+        current["noise_metrics"] = metrics
+        self.reward_fn.correctness.setdefault("noise_metrics_missing_through_step", self._observation_resume_step)
+        root = Path(self.config.trainer.default_local_dir).parent
+        if not hasattr(self, "_rollout_provenance"):
+            attempt = os.environ.get("SYNLOGIC_ATTEMPT", "unknown")
+            self._rollout_attempt_root = root / "training_rollouts" / f"attempt_{attempt}"
+            configuration = plain(OmegaConf.to_container(self.config, resolve=True))
+            paths = {"recipe/synlogic/trainer.py": Path(__file__),
+                     "recipe/synlogic/diagnostics.py": Path(diagnose.__code__.co_filename),
+                     "recipe/synlogic/observability.py": Path(snapshot_payload.__code__.co_filename),
+                     "src/dapo_ray_trainer.py": Path(inspect.getsourcefile(RayDAPOTrainer))}
+            revisions = {}
+            for name, repository in (("OLR", Path(__file__).resolve().parents[2]),
+                                     ("backend", paths["src/dapo_ray_trainer.py"].resolve().parents[1])):
+                result = subprocess.run(["git", "-C", str(repository), "rev-parse", "HEAD"],
+                                        capture_output=True, text=True, timeout=10)
+                revisions[name] = result.stdout.strip() if result.returncode == 0 else None
+            portable = root / "portable-provenance.json"
+            self._rollout_provenance = {
+                "kind": "periodic_training_rollouts", "schema_version": 1,
+                "protocol_id": self.config.provenance.protocol_id,
+                "allocation_id": os.environ.get("SYNLOGIC_ALLOCATION_ID"), "attempt": attempt,
+                "resume_checkpoint_step": self._observation_resume_step,
+                "noise_metrics_missing_through_step": self.reward_fn.correctness["noise_metrics_missing_through_step"],
+                "snapshot_alignment": "rollouts_before_optimizer_update_and_its_scheduled_evaluation",
+                "configuration": configuration,
+                "configuration_sha256": hashlib.sha256(json.dumps(configuration, sort_keys=True).encode()).hexdigest(),
+                "source_revisions": revisions,
+                "source_sha256": {name: hashlib.sha256(path.read_bytes()).hexdigest() for name, path in paths.items()},
+                "training_provenance": plain(json.loads(portable.read_text())) if portable.exists() else {},
+            }
+            atomic_json(self._rollout_attempt_root / "provenance.json", self._rollout_provenance)
+        self._pending_rollout_snapshot = None
+        envelope = {"training_update": step, "policy_update": step - 1,
+                    "allocation_id": os.environ.get("SYNLOGIC_ALLOCATION_ID"),
+                    "attempt": os.environ.get("SYNLOGIC_ATTEMPT"),
+                    "optimizer_update_completed": False, "metrics": metrics}
+        self._observed_noise_envelope = envelope
+        atomic_json(self._rollout_attempt_root / "metrics" / f"step_{step}.json", envelope)
+        if snapshot_due(step, int(self.config.trainer.test_freq), int(self.total_training_steps)):
+            metadata = {**self._rollout_provenance, "training_update": step, "policy_update": step - 1,
+                        "scheduled_evaluation_update": step, "observation_time_unix": time.time()}
+            payload = snapshot_payload(batch, records, self.reward_fn.correctness["prompts"],
+                                       self.reward_fn.reward.tokenizer, metadata)
+            self._pending_rollout_snapshot = write_snapshot(self._rollout_attempt_root / "snapshots", step, payload)
+        return metrics
+
+    def _training_update_observed(self, batch):
+        step = self.global_steps
+        envelope = self._observed_noise_envelope
+        if envelope["training_update"] != step:
+            raise RuntimeError("Observation commit and optimizer position disagree")
+        envelope.update(optimizer_update_completed=True, completed_time_unix=time.time())
+        self.reward_fn.correctness["batches"][-1]["optimizer_update_completed"] = True
+        atomic_json(self._rollout_attempt_root / "metrics" / f"step_{step}.json", envelope)
+        if self._pending_rollout_snapshot is not None:
+            commit_snapshot(self._pending_rollout_snapshot, step)
 
     def _validate(self):
         self.val_reward_fn.records.clear()
