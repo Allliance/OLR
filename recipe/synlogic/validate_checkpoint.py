@@ -1,5 +1,5 @@
 """CPU validation of every model/optimizer/RNG shard of a SynLogic checkpoint."""
-import argparse,ctypes,fcntl,json,math,mmap,os,re,subprocess,sys
+import argparse,ctypes,fcntl,json,math,mmap,os,re,signal,subprocess,sys
 from pathlib import Path
 
 def require(value,message):
@@ -18,6 +18,7 @@ def worker(folder):
     from template import PINNED_TEMPLATE_SHA256
     from refinement import OnlineLabelRefiner
     require(state['prompt_template_sha256']==PINNED_TEMPLATE_SHA256,'Template mismatch')
+    require(state['protocol_id'].endswith('-baseprompt'),'Checkpoint lacks corrected Base protocol')
     require(state['step']==state['last_reward_step']==step,'Model/reward state mismatch')
     refiner=OnlineLabelRefiner(**state['refiner']['config']);refiner.load_state_dict(state['refiner'])
     visits=sum(len(history['rates']) for history in refiner.history.values())
@@ -68,13 +69,17 @@ def worker(folder):
     if rank==0:
         require(all(p['shapes']==proofs[0]['shapes'] for p in proofs),'Rank parameter sets disagree')
         loader=torch.load(folder/'data.pt',map_location='cpu',weights_only=False)
-        require(isinstance(loader,dict) and loader and loader.get('_synlogic_sampler'),'Missing resumable sampler')
+        require(isinstance(loader,dict) and loader,'Missing dataloader state')
+        if 'oracle-clean' in state['protocol_id'] or '_synlogic_sampler' in loader:
+            require(isinstance(loader.get('_synlogic_sampler'),dict)
+                    and loader['_synlogic_sampler'].get('version')==1,'Missing or invalid resumable sampler')
         for proof in proofs:proof.pop('shapes')
         result={'step':step,'validated':True,'world_size':world,'model_parameters':parameters,
             'protocol_id':state['protocol_id'],'prompt_template_sha256':PINNED_TEMPLATE_SHA256,
             'optimizer_steps':5*step,'olr_prompt_visits':visits,'rank_proofs':proofs,
             'all_model_optimizer_tensors_finite':True,
-            'components':['model','optimizer','lr_scheduler','rng','dataloader','sampler','olr_history']}
+            'components':['model','optimizer','lr_scheduler','rng','dataloader','olr_history']
+                         +(['sampler'] if '_synlogic_sampler' in loader else [])}
         tmp=folder/'validated.tmp';tmp.write_text(json.dumps(result,indent=2)+'\n');tmp.replace(folder/'validated.json')
         print(json.dumps(result),flush=True)
     dist.barrier();dist.destroy_process_group()
@@ -88,10 +93,33 @@ def main():
     files=list((folder/'actor').glob('model_world_size_*_rank_*.pt'));require(files,'Missing model shards')
     worlds={int(re.search(r'world_size_(\d+)_rank_',p.name)[1]) for p in files};require(len(worlds)==1,'Mixed world sizes');world=worlds.pop()
     require(len(files)==world,'Missing model rank')
+    from template import PINNED_TEMPLATE_SHA256
+    step=int(folder.name.removeprefix('global_step_'))
+    require(json.loads((folder/'complete.json').read_text())['step']==step,'Incomplete checkpoint')
+    state=json.loads((folder/'olr_state.json').read_text())
+    require(state['step']==state['last_reward_step']==step,'Model/reward state mismatch')
+    require(state['protocol_id'].endswith('-baseprompt')
+            and state['prompt_template_sha256']==PINNED_TEMPLATE_SHA256,'Checkpoint protocol mismatch')
+    required=[folder/'data.pt']+[folder/f'actor/{kind}_world_size_{world}_rank_{rank}.pt'
+        for rank in range(world) for kind in ['model','optim','extra_state']]
+    require(all(p.is_file() and p.stat().st_size for p in required),'Missing full-state payload')
     marker=folder/'validated.json'
     if marker.exists():
-        proof=json.loads(marker.read_text());require(proof['validated'] and proof.get('world_size',1)==world,'Invalid existing proof');return
+        proof=json.loads(marker.read_text())
+        require(proof['validated'] and proof.get('world_size',1)==world and proof['step']==step
+                and proof['protocol_id']==state['protocol_id']
+                and proof['prompt_template_sha256']==PINNED_TEMPLATE_SHA256,'Invalid existing proof')
+        return
     env={**os.environ,'ROCR_VISIBLE_DEVICES':'','HIP_VISIBLE_DEVICES':'','CUDA_VISIBLE_DEVICES':'','OMP_NUM_THREADS':'2'}
-    subprocess.run([sys.executable,'-m','torch.distributed.run','--standalone',f'--nproc_per_node={world}',str(Path(__file__).resolve()),str(folder),'--worker'],env=env,check=True,timeout=900)
+    command=[sys.executable,'-m','torch.distributed.run','--standalone',f'--nproc_per_node={world}',str(Path(__file__).resolve()),str(folder),'--worker']
+    process=subprocess.Popen(command,env=env,start_new_session=True)
+    try:code=process.wait(timeout=1800)
+    except subprocess.TimeoutExpired:
+        os.killpg(process.pid,signal.SIGTERM)
+        try:process.wait(timeout=30)
+        except subprocess.TimeoutExpired:
+            os.killpg(process.pid,signal.SIGKILL);process.wait()
+        raise RuntimeError('CPU checkpoint validation exceeded its bounded deadline') from None
+    if code:raise subprocess.CalledProcessError(code,command)
 
 if __name__=='__main__':main()
