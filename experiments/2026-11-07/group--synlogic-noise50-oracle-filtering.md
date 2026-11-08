@@ -31,7 +31,7 @@ This is direct finite experiment supervision in the OLR project, whose shared or
 
 ## Main Finding (Running)
 
-CPU preflight passed, including real short/long dataset rendering, two-GPU resolved configuration, sampler/OLR tests, both-rank checkpoint failure/success gates and live holder survival after child success/failure/termination. Allocation is Running with two GPUs; cached initial Base metrics are logged. Actual GPU training startup is pending; no optimizer progress is yet claimed.
+Two-GPU training process launched from the untouched Base model; first optimizer update is pending. Two training GPUs on gpu35/gpu36 only; benchmark evaluation examples excluded from training. training_active.
 
 ## Events
 
