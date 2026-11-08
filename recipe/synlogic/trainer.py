@@ -2,14 +2,17 @@
 
 from collections import defaultdict
 from copy import deepcopy
+import hashlib
 import json
+import os
 from pathlib import Path
 
 from src.dapo_ray_trainer import RayDAPOTrainer
 from src.fixed_labels import answer_key, extract_answer
-from src.syn_logic_reward import SynLogicRewardManager, TaskDeadlineExceeded, verifier_classes, verifier_deadline
+from src.syn_logic_reward import Data, SynLogicRewardManager, TaskDeadlineExceeded, verifier_classes, verifier_deadline
 
 from .refinement import OnlineLabelRefiner
+from .diagnostics import diagnose
 
 
 class ValidationRecorder:
@@ -34,6 +37,10 @@ class RefinementReward:
         self.metrics = {}
         self.cached_batch = None
         self.cached_reward = None
+        self.correctness = {"version": 1, "missing_through_step": 0, "through_step": 0,
+                            "prompts": {}, "batches": []}
+        self.diagnostic_sha256 = hashlib.sha256(Path(__file__).read_bytes()
+            + Path(diagnose.__code__.co_filename).read_bytes()).hexdigest()
 
     def __call__(self, data, return_dict=False):
         step = self.trainer.global_steps
@@ -48,6 +55,7 @@ class RefinementReward:
         for i, uid in enumerate(data.non_tensor_batch["uid"]):
             groups[uid].append(i)
         observations = []
+        diagnostic_inputs = []
         extracted_count = 0
         previous = deepcopy(self.refiner.state_dict())
         # Repeated responses can share dictionaries; only change private copies.
@@ -62,12 +70,14 @@ class RefinementReward:
                     raise RuntimeError("Held-out data entered the training refiner")
                 verifier = verifier_classes[task]()
                 keys = []
+                raw_answers = []
                 for i in indices:
                     item = data[i]
                     prompt_length = item.batch["prompts"].shape[-1]
                     length = int(item.batch["attention_mask"][prompt_length:].sum())
                     text = self.reward.tokenizer.decode(item.batch["responses"][:length], skip_special_tokens=True)
                     extracted = extract_answer(text)
+                    raw_answers.append(extracted)
                     try:
                         with verifier_deadline():
                             key = answer_key(extracted, verifier)
@@ -77,6 +87,12 @@ class RefinementReward:
                     extracted_count += key is not None
                 decision = self.refiner.observe(extra["index"], keys, epoch)
                 observations.append(decision)
+                diagnostic_inputs.append({
+                    "prompt_id": int(extra["index"]), "task": task,
+                    "original_noisy": extra["target_mode"] == "fixed_wrong_answer",
+                    "original_assigned_answer_key": extra.get("assigned_answer_key"),
+                    "original_game_data_str": extra.get("original_game_data_str") or extra["game_data_str"],
+                    "raw_answers": raw_answers, "answer_keys": keys, **decision})
                 if decision["selected"]:
                     for i in indices:
                         current = deepcopy(data.non_tensor_batch["extra_info"][i])
@@ -86,6 +102,36 @@ class RefinementReward:
                         target["ground_truth"] = decision["answer_key"]
                         data.non_tensor_batch["reward_model"][i] = target
             result = self.reward(data, return_dict=True)
+            for record, indices in zip(diagnostic_inputs, groups.values()):
+                record["training_rewards"] = [float(result["reward_tensor"][i].sum()) for i in indices]
+            def verify_original(task, game, answer):
+                try:
+                    with verifier_deadline():
+                        return verifier_classes[task]().verify(Data.from_json_str(game), answer)
+                except TaskDeadlineExceeded as error:
+                    raise TimeoutError("Native diagnostic verifier deadline") from error
+            diagnostic_records, diagnostic_metrics = diagnose(diagnostic_inputs, verify_original)
+            prompts = {str(row["prompt_id"]): {key: row[key] for key in (
+                "task", "original_noisy", "original_assigned_answer_key", "original_game_data_str")}
+                for row in diagnostic_inputs}
+            for prompt_id, details in prompts.items():
+                if prompt_id in self.correctness["prompts"] and self.correctness["prompts"][prompt_id] != details:
+                    raise ValueError("Original diagnostic labels changed during training")
+            if self.correctness["through_step"] != step - 1:
+                raise RuntimeError("Diagnostic history and optimizer position disagree")
+            batch = {"training_update": step, "policy_update": step - 1, "epoch": epoch,
+                     "diagnostic_implementation_sha256": self.diagnostic_sha256,
+                     "allocation_id": os.environ.get("SYNLOGIC_ALLOCATION_ID"),
+                     "attempt": os.environ.get("SYNLOGIC_ATTEMPT"),
+                     "records": diagnostic_records, "metrics": diagnostic_metrics}
+            directory = Path(self.trainer.config.trainer.default_local_dir).parent / "early_correctness"
+            directory.mkdir(parents=True, exist_ok=True)
+            temporary = directory / f"step_{step}.json.tmp"
+            temporary.write_text(json.dumps({**batch, "prompts": prompts}) + "\n")
+            temporary.replace(directory / f"step_{step}.json")
+            self.correctness["batches"].append(batch)
+            self.correctness["prompts"].update(prompts)
+            self.correctness["through_step"] = step
         except BaseException:
             self.refiner.load_state_dict(previous)
             raise
@@ -107,6 +153,7 @@ class RefinementReward:
                 for indices in groups.values()) / count,
         }
         self.cached_batch, self.cached_reward = data, result
+        self.metrics.update(diagnostic_metrics)
         return result if return_dict else result["reward_tensor"]
 
 
@@ -142,7 +189,8 @@ class SynLogicOLRTrainer(RayDAPOTrainer):
         payload = {"step": self.global_steps, "last_reward_step": self.reward_fn.last_step,
                    "protocol_id": self.config.provenance.protocol_id,
                    "prompt_template_sha256": self.config.provenance.prompt_template_sha256,
-                   "refiner": self.reward_fn.refiner.state_dict()}
+                   "refiner": self.reward_fn.refiner.state_dict(),
+                   "early_correctness": self.reward_fn.correctness}
         temporary = folder / "olr_state.json.tmp"
         temporary.write_text(json.dumps(payload) + "\n")
         temporary.replace(folder / "olr_state.json")
@@ -165,6 +213,15 @@ class SynLogicOLRTrainer(RayDAPOTrainer):
                 raise ValueError("Model and OLR histories belong to different updates")
             self.reward_fn.refiner.load_state_dict(state["refiner"])
             self.reward_fn.last_step = state["last_reward_step"]
+            diagnostic = state.get("early_correctness", {"version": 1,
+                "missing_through_step": self.global_steps, "through_step": self.global_steps,
+                "prompts": {}, "batches": []})
+            if diagnostic["version"] != 1 or diagnostic["through_step"] != self.global_steps:
+                raise ValueError("Incompatible true-correctness diagnostic history")
+            if [b["training_update"] for b in diagnostic["batches"]] != list(
+                    range(diagnostic["missing_through_step"] + 1, self.global_steps + 1)):
+                raise ValueError("Diagnostic coverage has unrecorded internal updates")
+            self.reward_fn.correctness = diagnostic
         return result
 
     def _validate(self):

@@ -16,6 +16,39 @@ def require(condition, message):
         raise ValueError(message)
 
 
+def validate_correctness(refinement, step):
+    diagnostic = refinement.get("early_correctness")
+    if diagnostic is None:
+        return {}
+    missing = diagnostic["missing_through_step"]
+    require(diagnostic["version"] == 1 and 0 <= missing <= step
+            and diagnostic["through_step"] == step, "Invalid diagnostic coverage")
+    batches = diagnostic["batches"]
+    require([b["training_update"] for b in batches] == list(range(missing + 1, step + 1)),
+            "Missing internal diagnostic updates")
+    for batch in batches:
+        require(batch["policy_update"] == batch["training_update"] - 1 and len(batch["records"]) == 160,
+                "Diagnostic policy position or group count differs")
+        for row in batch["records"]:
+            prompt = diagnostic["prompts"][str(row["prompt_id"])]
+            require(prompt["task"] == row["task"] and prompt["original_noisy"] == row["original_noisy"]
+                    and bool(prompt["original_game_data_str"]), "Diagnostic original puzzle data missing")
+            history = refinement["refiner"]["history"][str(row["prompt_id"])]
+            visit = row["visits"] - 1
+            require(history["answers"][visit] == row["answer_key"]
+                    and history["rates"][visit] == row["majority_rate"], "Diagnostic/refiner disagreement")
+            require(not row["task"].startswith("val/") and type(row["original_noisy"]) is bool,
+                    "Invalid diagnostic training provenance")
+            for field in ("raw_answers", "answer_keys", "native_rollout_correct", "verification_errors", "training_rewards"):
+                require(len(row[field]) == 8, "Incomplete diagnostic response group")
+            require(all(math.isfinite(value) for value in row["training_rewards"]), "Nonfinite diagnostic training rewards")
+            require(all(value is None or type(value) is bool for value in row["native_rollout_correct"])
+                    and (row["native_majority_correct"] is None or type(row["native_majority_correct"]) is bool),
+                    "Invalid native correctness verdict")
+    return {"early_correctness_missing_through_step": missing,
+            "early_correctness_records": len(batches) * 160}
+
+
 def main():
     torch.set_num_threads(2)
     parser = argparse.ArgumentParser()
@@ -30,6 +63,7 @@ def main():
     step = int(folder.name.removeprefix("global_step_"))
     require(json.loads((folder / "complete.json").read_text())["step"] == step, "Incomplete checkpoint")
     refinement = json.loads((folder / "olr_state.json").read_text())
+    diagnostic_summary = validate_correctness(refinement, step)
     from template import PINNED_TEMPLATE_SHA256
     require(refinement.get("prompt_template_sha256") == PINNED_TEMPLATE_SHA256, "Checkpoint template protocol mismatch")
     require(refinement.get("protocol_id", "").endswith("-baseprompt"), "Checkpoint lacks the corrected protocol identity")
@@ -93,6 +127,7 @@ def main():
               "optimizer_states": optimizer_states, "olr_prompt_visits": visits,
               "optimizer_steps": 5 * step, "all_model_optimizer_tensors_finite": True,
               "components": ["model", "optimizer", "lr_scheduler", "rng", "dataloader", "olr_history"]}
+    result.update(diagnostic_summary)
     temporary = folder / "validated.tmp"
     temporary.write_text(json.dumps(result, indent=2) + "\n")
     temporary.replace(folder / "validated.json")
