@@ -39,4 +39,4 @@ Training in progress: 200/440 completed outer updates; latest native checkpoint 
 |---|---|---|---|
 | Oracle-discard experiment authorized | 2026-11-07T22:04:41-05:00 | Preserve original mask, exclude benchmark collisions, stage a fresh Base run for ten passes on two GPUs. | Yes |
 | Pre-evaluation rollout preservation verified | 2026-11-08T08:54:58.564977+00:00 | Resumed after checkpoint 70 without dropping completed updates; verified full checkpoint 80 and all 1,280 saved rollouts. Snapshots begin at step 80; earlier rollouts are unavailable. | Yes |
-| HF public-storage quota blocks publication | 2026-11-08T08:35:35+00:00 | Keep two validated local checkpoints and the verified remote checkpoint 50; latch failed uploads. Final KOR evaluation is independent of remote-backup completion. | No |
+| HF publication failure and recovery | 2026-11-08T08:35:35+00:00 | After external repository cleanup, verified all 39 remote payload files for checkpoint 220; switched to single-thread HTTP uploads after Xet rate limiting and resumed the bounded publisher. | Yes |
