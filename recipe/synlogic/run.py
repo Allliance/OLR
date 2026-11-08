@@ -9,7 +9,7 @@ import shlex
 import sys
 
 CONDITIONS = ("full-clean", "noise90", "noise70", "noise50", "noise30-olr",
-              "noise90-olr", "noise70-olr", "noise50-olr")
+              "noise90-olr", "noise70-olr", "noise50-olr", "noise50-oracle-clean")
 
 
 def prepared_metadata(root, condition):
@@ -40,10 +40,14 @@ def overrides(root, condition, framework_code):
     spec = importlib.util.spec_from_file_location("single_card_config", framework_code / "tools/train_single_card.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    base = condition.removesuffix("-olr")
+    base = "full-clean" if condition == "noise50-oracle-clean" else condition.removesuffix("-olr")
     values = module.overrides(root, base)
     metadata = prepared_metadata(root, condition)
+    gpus = int(metadata.get("budget", {}).get("max_concurrent_training_gpus", 1))
     replacements = {
+        "trainer.n_gpus_per_node": str(gpus),
+        "actor_rollout_ref.actor.fsdp_config.fsdp_size": str(gpus),
+        "data.train_files": str(root / "data/prepared" / (condition + ".parquet")) if condition == "noise50-oracle-clean" else str(root / "data/prepared" / (base + ".parquet")),
         "+data.dataloader_num_workers": "0",
         "data.train_batch_size": "160", "data.gen_batch_size": "160",
         "data.max_prompt_length": "24576", "data.truncation": "error",
@@ -63,7 +67,7 @@ def overrides(root, condition, framework_code):
         "actor_rollout_ref.rollout.val_kwargs.temperature": "0.6",
         "actor_rollout_ref.rollout.val_kwargs.top_p": "1.0",
         "reward_model.score_type": "acc_without_think_format",
-        "trainer.total_training_steps": str(metadata["target_updates"]), "trainer.total_epochs": "10000",
+        "trainer.total_training_steps": str(metadata["target_updates"]), "trainer.total_epochs": "10" if condition == "noise50-oracle-clean" else "10000",
         "trainer.experiment_name": metadata["experiment_name"],
         "trainer.default_local_dir": str(root / "runs" / condition / "checkpoints"),
         "hydra.run.dir": str(root / "runs" / condition / "hydra"),
@@ -157,11 +161,13 @@ def main():
             path.mkdir(exist_ok=True)
             os.environ[key] = str(path)
         import torch
-        if torch.cuda.device_count() != 1:
-            raise ValueError("Each scientific condition must see exactly one GPU")
-        free, total = torch.cuda.mem_get_info(0)
-        if total - free > 1024**3:
-            raise ValueError("The assigned GPU has an unreconciled existing workload")
+        expected_gpus = int(prepared_metadata(root, args.condition).get("budget", {}).get("max_concurrent_training_gpus", 1))
+        if torch.cuda.device_count() != expected_gpus:
+            raise ValueError("Visible GPU count differs from the prepared experiment budget")
+        for index in range(expected_gpus):
+            free, total = torch.cuda.mem_get_info(index)
+            if total - free > 1024**3:
+                raise ValueError("An assigned GPU has an unreconciled existing workload")
         if not args.calibrate:
             metadata = prepared_metadata(root, args.condition)
             identity = metadata["wandb"]["id"]

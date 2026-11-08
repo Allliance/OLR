@@ -1,4 +1,4 @@
-"""Run the SynLogic OLR adapter on the validated veRL single-card backend."""
+"""Run the SynLogic OLR adapter on the validated veRL single-node backend."""
 
 from copy import deepcopy
 import os
@@ -12,7 +12,7 @@ import ray
 @hydra.main(config_path=str(Path(os.environ["SYNLOGIC_FRAMEWORK_CODE"]) / "src/config"),
             config_name="dapo_trainer", version_base=None)
 def main(config):
-    ray.init(num_cpus=config.ray_init.num_cpus, num_gpus=1, include_dashboard=False,
+    ray.init(num_cpus=config.ray_init.num_cpus, num_gpus=config.trainer.n_gpus_per_node, include_dashboard=False,
              object_store_memory=8 * 1024**3, _temp_dir="/run/synlogic-cache/ray",
              runtime_env={"env_vars": {"TOKENIZERS_PARALLELISM": "true", "NCCL_DEBUG": "WARN",
                                        "VLLM_LOGGING_LEVEL": "WARN"}})
@@ -32,10 +32,10 @@ class TaskRunner:
 
         OmegaConf.resolve(config)
         tokenizer = verify_base_template(hf_tokenizer(config.actor_rollout_ref.model.path))
-        resource_pool = "single-card"
+        resource_pool = "synlogic"
         roles = {Role.ActorRollout: ray.remote(ActorRolloutRefWorker),
                  Role.Critic: ray.remote(CriticWorker), Role.RefPolicy: ray.remote(ActorRolloutRefWorker)}
-        manager = ResourcePoolManager(resource_pool_spec={resource_pool: [1]},
+        manager = ResourcePoolManager(resource_pool_spec={resource_pool: [config.trainer.n_gpus_per_node]},
                                       mapping={role: resource_pool for role in roles})
         reward_args = dict(tokenizer=tokenizer, num_examine=0,
                            reward_fn_key=config.data.reward_fn_key,
