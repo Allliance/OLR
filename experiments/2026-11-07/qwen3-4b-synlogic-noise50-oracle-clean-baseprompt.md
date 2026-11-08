@@ -27,7 +27,7 @@ This is direct finite experiment supervision in the OLR project, whose shared or
 
 ## Main Finding (Running)
 
-Two-GPU training process launched from the untouched Base model; first optimizer update is pending. Two training GPUs on gpu35/gpu36 only; benchmark evaluation examples excluded from training. training_active.
+Training in progress: 1/440 completed outer updates; latest native checkpoint 1. Two training GPUs on gpu35/gpu36 only; benchmark evaluation examples excluded from training. training_active.
 
 ## Events
 
