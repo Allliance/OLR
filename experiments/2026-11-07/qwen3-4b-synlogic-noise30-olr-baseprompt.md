@@ -33,7 +33,7 @@ This is direct finite single-experiment training supervision, as in the earlier 
 
 ## Main Finding (Running)
 
-Training in progress; latest validated checkpoint 80/880. Diagnostic logging begins at update 81 after a planned same-allocation restart; live optimizer and checkpoint verification remain in progress.
+Training in progress; latest saved checkpoint 100/880 outer updates. One training GPU; validation data excluded from training. training_active.
 
 ## Events
 
