@@ -27,7 +27,7 @@ This is direct finite experiment supervision in the OLR project, whose shared or
 
 ## Main Finding (Running)
 
-Training in progress: 85/440 completed outer updates on 7,062 retained clean prompts, with OLR disabled. Latest validated native checkpoint: 80. Native validation at step 80 reached 27.27% mean accuracy on all 270 questions with eight responses each, versus cached Base 2.41%. Two training GPUs on gpu35/gpu36 only; known benchmark collisions are excluded. KOR Logic/Cipher evaluation remains pending until final checkpoint 440. HF publication is blocked by the account public-storage quota; last successful remote checkpoint is 50.
+Training in progress: 100/440 completed outer updates; latest native checkpoint 100. Native validation at step 100: 29.72% mean accuracy on all 270 questions with eight responses each, versus cached Base 2.41%. Two training GPUs on gpu35/gpu36 only; benchmark evaluation examples excluded from training. training_active.
 
 ## Events
 
