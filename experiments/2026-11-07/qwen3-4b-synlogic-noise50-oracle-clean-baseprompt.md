@@ -54,7 +54,7 @@ Final native checkpoint440 is retained locally and independently verified on [HF
 
 ## Continuation from step440 to840
 
-Continuation from preserved step440: 440/840 outer updates; latest validated save 440. Exactly400 additional updates authorized, same data/objective and two-GPU budget. The original step440 findings and KOR evaluation above remain preserved. authorized_400_update_continuation_preflight.
+Continuation from preserved step440: 500/840 outer updates; latest validated save 500. Exactly400 additional updates authorized, same data/objective and two-GPU budget. The original step440 findings and KOR evaluation above remain preserved. training_active.
 
 ## Events
 
