@@ -27,7 +27,7 @@ This is direct finite experiment supervision in the OLR project, whose shared or
 
 ## Main Finding (Running)
 
-Training in progress: 378/440 completed outer updates; latest native checkpoint 378. Native validation at step 360: 38.89% mean accuracy on all 270 questions with eight responses each, versus cached Base 2.41%. Two training GPUs on gpu35/gpu36 only; benchmark evaluation examples excluded from training. storage_protective_stop_requires_diagnosis.
+Training in progress: 381/440 completed outer updates. The second allocation resumed the complete step-378 state without discarding completed updates; checkpoint 380 has finite full state on both ranks and 1,900 AdamW updates. Native validation at 380: 40.83% on all 270 questions and 39.47% on the pre-existing audited 254-question subset. W&B identity, LR, data and two-GPU budget are unchanged. The latest independently verified HF backup is 370; further publication is quota-blocked while training and the authorized final KOR evaluation continue.
 
 ## Events
 
@@ -37,3 +37,5 @@ Training in progress: 378/440 completed outer updates; latest native checkpoint 
 | Pre-evaluation rollout preservation verified | 2026-11-08T08:54:58.564977+00:00 | Resumed after checkpoint 70 without dropping completed updates; verified full checkpoint 80 and all 1,280 saved rollouts. Snapshots begin at step 80; earlier rollouts are unavailable. | Yes |
 | HF publication failure and recovery | 2026-11-08T08:35:35+00:00 | After external repository cleanup, verified all 39 remote payload files for checkpoint 220; switched to single-thread HTTP uploads after Xet rate limiting and resumed the bounded publisher. | Yes |
 | HF quota recurrence and bounded recovery | 2026-11-09T00:04:54Z | Quota rejected step 290. Retired only this run's older HF checkpoint 240, verified full step 320 (19 files, both ranks), and restored single-checkpoint publication; training continued. | Yes |
+| Checkpoint-safe allocation renewal | 2026-11-09T03:16:12Z | Old allocation ended at 03:15:55Z; job 50146 uses two GPUs on gpu35 until 2026-11-10T03:16:12Z. Verified updates 379–381, full checkpoint 380 and its rollout snapshot after resuming 378. | Yes |
+| HF quota recurrence after renewal | 2026-11-09T03:19:42Z | CPU-only producer publication had verified full checkpoints 360 and 370. New uploads are rejected with quota 403; preserve the sole verified backup 370, latch redundant retries and monitor actual repository storage accounting. | No |
