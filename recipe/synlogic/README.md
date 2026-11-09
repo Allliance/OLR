@@ -5,6 +5,13 @@ noise without OLR, plus each noisy condition with OLR. Use one GPU per condition
 and the eighth for calibration and pass@k diagnostics. This study operates
 under direct supervision, outside the parent project's staging shared queue.
 
+The comparison below records the historical October 31 protocol; those runs are
+stopped. New runs require their current authorized experiment protocol and must
+exclude benchmark evaluation examples before any optimization. Preserve official
+evaluation sets; never create training data by splitting or relabeling a benchmark.
+The [oracle-discard protocol](../../experiments/2026-11-07/qwen3-4b-synlogic-noise50-oracle-clean-baseprompt.md)
+uses a separately audited training pool and a finite 440-update target.
+
 ## Frozen inputs
 
 Model: `Qwen/Qwen3-4B-Base`, revision
@@ -21,12 +28,15 @@ to the assigned fixed target. A selected OLR candidate replaces the target for
 that rollout group using the same matcher. No reward signs are flipped.
 Hidden original labels do not enter the refinement gates.
 
-The original 270-question validation split contains 36 exact prompt overlaps
-with training, across five task types, including all ten skyscraper questions.
-Keep that benchmark for continuity and separately score the 234 disjoint
-questions covering 26 tasks. Generalization conclusions use the latter.
-Log `val-core/synlogic/reward/mean@8` and
-`val-core/synlogic-disjoint/reward/mean@8` alongside the original task plots.
+The historical training pool contained 36 distinct questions matching the
+270-question validation set, across five task types, including all ten skyscraper
+questions. Its supplemental disjoint score therefore used 234 questions over
+26 tasks. These counts describe the old runs, not a permitted input for a new
+run. The oracle-discard run excludes held-out collisions from training, so its
+official and training-disjoint scores both use all 270 questions. Report the
+actual denominator beside `val-core/synlogic/reward/mean@8` and
+`val-core/synlogic-disjoint/reward/mean@8`; do not compare the historical 234-row
+subset with the new 270-row subset as if they were identical.
 
 ## Method and schedule
 
