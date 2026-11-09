@@ -9,38 +9,33 @@ W&B: [Training and evaluation](https://wandb.ai/alliance/Noisy-RLVR/runs/q3-synl
 
 ## Goal
 
-Measure performance when an oracle identifies and discards every intentionally corrupted training example, leaving only the clean part of the existing 50%-noise dataset. Start from Base rather than a trained checkpoint.
-
-[Experiment index](../README.md)
+Measure performance when an oracle identifies and discards intentionally corrupted training examples, starting from fresh Base weights.
 
 ## Experimental Setup
 
-Fresh Qwen/Qwen3-4B-Base revision `906bfd4b4dc7f14ee4320094d8b41684abff8539`; discard the originally corrupted rows of the frozen SynLogic-Easy noise50 dataset, with no OLR or relabeling. The original 15,610 rows contain 7,805 corrupted rows and 7,805 unchanged clean rows. Preserve this original corruption mask; do not regenerate or reshuffle it. Exclude another 743 clean rows whose prompt or input-constraint fingerprints collide with held-out SynLogic/KOR/BBH/BBEH evaluation puzzles or the existing overlap audit. Keep all official evaluation files unchanged. The resulting 7,062 training rows retain their original native-verifier labels; signature nonmatches do not prove unrestricted semantic disjointness.
-
-The user selected ten passes rather than a fixed 400-iteration match. With the existing drop-last loader, each pass has 44 complete 160-prompt batches (22 remainder rows dropped, with shuffle seed 42): 440 outer iterations and 2,200 AdamW minibatch updates. Preserve eight responses/prompt, optimizer minibatches of 32 prompts, LR 1e-6 without warmup, weight decay .01, token-mean policy loss, clip .2/.2, dual clip 3, reference KL .001, train temperature 1 and validation temperature .6 with eight responses. Use 24,576 prompt and 4,096 response tokens, truncation=error, and explicit enable_thinking=False. The actual Base ChatML prompts are byte-identical to the earlier Base protocol; maximum prompt length is 24,485 tokens. Two data-parallel/FSDP ranks and rollout tensor parallelism one; no loss implementation change.
-
-Native validation preserves all 270 official questions, with the existing additional 254-question validity-audited metric. The unchanged initial Base evaluation is reused from its verified cache; no fresh initial Base inference. Validate every 20 iterations and save at iteration 1, every 10, the endpoint, and allocation drain. Save/validate every rank’s model, optimizer, scheduler, RNG, sampler and label-history state. Initially retain up to two validated native checkpoints. After the step-320 HF quota recovery, retain only the latest full-state validated native checkpoint and mirror that one checkpoint; preserve the final checkpoint and all pre-evaluation rollout snapshots separately. After training, evaluate the final actor on the already authorized KOR Logic/Cipher full250 protocol (16 responses/question) and derive pass@k, using the existing Base cache only. No additional benchmark inference is authorized by this run.
-
-Use exactly two GPUs on gpu35/gpu36, initially allocation 50137 on gpu35; do not touch the other running jobs. The independent sleeping holder ends 2026-11-09T03:15:52Z (November 8, 10:15:52 PM EST); attach with `srun --jobid=50137 --overlap --pty bash`. Preserve it on workload success/failure/stop, without idle renewal. Bound renewal to three non-overlapping 24-hour leases toward this finite target, with new submission only after the previous allocation ends. Check progress each minute, full resources/logging every 15 minutes, and host working-set memory every two seconds. Preserve user stops; bound blind recovery to three failures in six hours or two without a newer checkpoint. Use an independent CPU HF publisher in the authorized `projects/OLR/runs/qwen3-4b-synlogic-noise50-oracle-clean-s42-20261107` namespace.
-
-This is direct finite experiment supervision in the OLR project, whose shared orchestration is not enabled. Existing stopped experiments and their latches are untouched. Older noisy/full-clean references have different saved iteration budgets and overlap handling, so endpoint comparisons do not isolate the oracle filter alone. Full resolved settings and exact data/source hashes are in W&B.
+Keep the original clean half of the frozen SynLogic-Easy 50%-noise training corpus. Of 7,805 clean rows, exclude another 743 matching held-out prompt/input-constraint fingerprints, leaving 7,062 genuine training rows. Preserve all official evaluation sets. No relabeling or OLR. The user selected ten passes: 44 drop-last batches/pass, 440 outer updates and 2,200 AdamW updates, using exactly two GPUs on gpu35/gpu36.
 
 ## Sub-experiments
 
-- [Qwen3-4B-Base oracle-clean subset](qwen3-4b-synlogic-noise50-oracle-clean-baseprompt.md)
+- [Full settings, checkpoint provenance and final results](qwen3-4b-synlogic-noise50-oracle-clean-baseprompt.md)
 
-## Main Finding
+## Main Finding (Complete)
 
-Training reached 440/440 outer updates; final full-state checkpoint is validated and published to HF. Final KOR transfer evaluation remains pending. Native validation at step 440: 41.67% mean accuracy on all 270 questions with eight responses each, versus cached Base 2.41%. Two training GPUs on gpu35/gpu36 only; benchmark evaluation examples excluded from training. complete.
+Final native SynLogic mean accuracy is **41.667%** on 270 questions with eight responses each, versus cached initial Base **2.407%**. The fixed 254-question validity-audited score is **40.404%**.
+
+The oracle-filtered final model scores **44.025% on KOR Logic** and **20.975% on KOR Cipher** at pass@1, versus 29.450% and 1.425% for the original 50%-noise checkpoint. Evaluation uses 250 questions/benchmark and 16 responses/question; all 8,000 new responses were independently rescored. Full pass@k curves, distinct condition colors and a 40-row results table were remotely verified on W&B. Initial-to-final plots use the explicitly labeled cached 50-question subset; no Base inference was repeated.
+
+Legacy references use different training budgets and lack the same benchmark overlap exclusions. These single-seed endpoints do not isolate the oracle filter alone.
+
+Both native checkpoint ranks and all resume state passed validation; the final 20-file, 49.845 GB HF backup was independently verified. All 19 pre-evaluation rollout snapshots from steps 80–440 passed hashes and lineage checks. Steps 20/40/60 were not captured.
 
 ## Events
 
 | Event | Datetime | Action taken | Resolved |
 |---|---|---|---|
-| Oracle-discard experiment authorized | 2026-11-07T22:04:41-05:00 | Preserve original mask, exclude benchmark collisions, stage a fresh Base run for ten passes on two GPUs. | Yes |
-| Pre-evaluation rollout preservation verified | 2026-11-08T08:54:58.564977+00:00 | Resumed after checkpoint 70 without dropping completed updates; verified full checkpoint 80 and all 1,280 saved rollouts. Snapshots begin at step 80; earlier rollouts are unavailable. | Yes |
-| HF publication failure and recovery | 2026-11-08T08:35:35+00:00 | After external repository cleanup, verified all 39 remote payload files for checkpoint 220; switched to single-thread HTTP uploads after Xet rate limiting and resumed the bounded publisher. | Yes |
-| HF quota recurrence and bounded recovery | 2026-11-09T00:04:54Z | Quota rejected step 290. Retired only this run's older HF checkpoint 240, verified full step 320 (19 files, both ranks), and restored single-checkpoint publication; training continued. | Yes |
-| Checkpoint-safe allocation renewal | 2026-11-09T03:16:12Z | Old allocation ended at 03:15:55Z; job 50146 uses two GPUs on gpu35 until 2026-11-10T03:16:12Z. Verified updates 379–381, full checkpoint 380 and its rollout snapshot after resuming 378. | Yes |
-| HF quota recurrence after renewal | 2026-11-09T03:19:42Z | Preserved verified checkpoint 370 while quota 403 blocked new uploads. After measured repository storage usage fell by 149.48 GB, one bounded CPU-only retry published checkpoint 390; independently verified all 19 files and both ranks. This event records the verified recovery at 390; final publication is tracked separately below. | Yes |
-| Final full-state HF publication | 2026-11-09T07:35:18Z | Final checkpoint 440 has passed local all-rank validation and its CPU-only upload is running; remote verification is pending. | No |
+| Oracle experiment authorized | 2026-11-07T22:04:41-05:00 | Fresh Base, original corruption mask, ten filtered-data passes, two GPUs. | Yes |
+| Rollout observability added | 2026-11-08T08:54:58Z | Continued after checkpoint 70 with unchanged scientific settings; first snapshot at 80. | Yes |
+| Checkpoint-safe lease renewal | 2026-11-09T03:16:12Z | Resume full checkpoint 378 in allocation 50146 without discarding completed updates. | Yes |
+| Native endpoint validated | 2026-11-09T07:35:00Z | Validate 440 outer/2,200 AdamW updates and both ranks' full state. | Yes |
+| Final HF publication | 2026-11-09T07:51:00Z | Independently verify checkpoint 440, all 20 payload files and both ranks after quota recovery. | Yes |
+| Final KOR publication | 2026-11-09T07:53:27Z | Independently verify all 8,000 scores, six actual W&B plots, 40 table rows and model/task tags. | Yes |
