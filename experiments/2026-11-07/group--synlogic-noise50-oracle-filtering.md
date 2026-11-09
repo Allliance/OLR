@@ -29,11 +29,9 @@ This is direct finite experiment supervision in the OLR project, whose shared or
 
 - [Qwen3-4B-Base oracle-clean subset](qwen3-4b-synlogic-noise50-oracle-clean-baseprompt.md)
 
-## Main Finding (Training complete; transfer evaluation running)
+## Main Finding
 
-Completed all 440 outer updates and 2,200 AdamW updates from fresh Base weights. Final native validation is 41.67% mean accuracy on the unchanged 270-question set (eight responses each), versus cached initial Base 2.41%; the 254-question validity-audited score is 40.40%. Both ranks' full model/optimizer/scheduler/RNG/sampler/label-history state passed validation. All 19 rollout snapshots from steps 80–440 passed hashes and execution-lineage checks; full 1,280-rollout audits passed at 80, 400 and 440. Earlier snapshots at 20/40/60 were not saved. With no corrupted training groups, noisy-rate denominators are zero and rates remain undefined.
-
-Approved final KOR Logic/Cipher evaluation is running on 250 questions each with 16 responses/question. Its separate CPU exporter checked every saved BF16 slice against both native shards (4,411,424,256 state elements) and passed a finite CPU forward test. The recipe's historical one-rank export helper is not used for this two-rank checkpoint. Final HF publication is in progress; checkpoint 390 remains the independently verified backup until 440 is remotely verified.
+Training reached 440/440 outer updates; final full-state checkpoint is validated and published to HF. Final KOR transfer evaluation remains pending. Native validation at step 440: 41.67% mean accuracy on all 270 questions with eight responses each, versus cached Base 2.41%. Two training GPUs on gpu35/gpu36 only; benchmark evaluation examples excluded from training. complete.
 
 ## Events
 
