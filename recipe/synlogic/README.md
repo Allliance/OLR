@@ -2,7 +2,7 @@
 
 ## Current finite protocol: November 7
 
-[Protocol and validated milestones](../../experiments/2026-11-07/qwen3-4b-synlogic-noise30-olr-baseprompt.md). This branch adds a fresh, one-GPU noise30-olr run with a benchmark-disjoint 14,117-row pool, 4,235 fixed wrong labels, explicit thinking-disabled Base ChatML prompts, 880 outer updates and OLR selection from update 441. The original validation set stays intact. The historical experiments above remain stopped; their checkpoints and data are unchanged. This branch does not resume their trajectories.
+[Protocol and validated milestones](../../experiments/2026-11-07/qwen3-4b-synlogic-noise30-olr-baseprompt.md). This branch adds a fresh, one-GPU noise30-olr run with a benchmark-disjoint 14,117-row pool, 4,235 fixed wrong labels, explicit thinking-disabled Base ChatML prompts, 880 outer updates and OLR selection from update 441. The original validation set stays intact. The historical experiments below remain stopped; their checkpoints and data are unchanged. This branch does not resume their trajectories.
 
 This run uses one GPU on gpu35/gpu36 and stops at 880 outer updates. The
 historical study below remains stopped and grants no new execution or resource

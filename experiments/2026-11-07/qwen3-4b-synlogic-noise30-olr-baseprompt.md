@@ -94,6 +94,6 @@ at commit da052ed8807691f6559c1e3ac9f5b4e1244680b1 (verified against the
 byte-identical upstream trainer and a native Math-Verify sentinel probe).
 Do not substitute a tied-count rate when reconstructing the actual selector.
 For this run, both `synlogic` and the legacy `synlogic-disjoint` validation
-keys cover all 270 questions; the older `disjoint` key covered 234. The
+keys cover all 270 questions; the same `synlogic-disjoint` key covered 234 in the older study. The
 separate audited key covers 254. Denominator equality alone does not repair
 the older runs' benchmark overlaps or make their training pools comparable.
