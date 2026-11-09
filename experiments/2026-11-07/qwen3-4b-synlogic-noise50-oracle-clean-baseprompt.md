@@ -27,7 +27,7 @@ This is direct finite experiment supervision in the OLR project, whose shared or
 
 ## Main Finding (Running)
 
-Training in progress: 300/440 completed outer updates; latest native checkpoint 300. Native validation at step 300: 36.57% mean accuracy on all 270 questions with eight responses each, versus cached Base 2.41%. Two training GPUs on gpu35/gpu36 only; benchmark evaluation examples excluded from training. training_active.
+Training in progress: 378/440 completed outer updates; latest native checkpoint 378. Native validation at step 360: 38.89% mean accuracy on all 270 questions with eight responses each, versus cached Base 2.41%. Two training GPUs on gpu35/gpu36 only; benchmark evaluation examples excluded from training. storage_protective_stop_requires_diagnosis.
 
 ## Events
 
