@@ -27,7 +27,7 @@ This is direct finite experiment supervision in the OLR project, whose shared or
 
 ## Main Finding (Running)
 
-Training in progress: 381/440 completed outer updates. The second allocation resumed the complete step-378 state without discarding completed updates; checkpoint 380 has finite full state on both ranks and 1,900 AdamW updates. Native validation at 380: 40.83% on all 270 questions and 39.47% on the pre-existing audited 254-question subset. W&B identity, LR, data and two-GPU budget are unchanged. The latest independently verified HF backup is 370; further publication is quota-blocked while training and the authorized final KOR evaluation continue.
+Training in progress: 400/440 completed outer updates; latest native checkpoint 400. Native validation at step 400: 41.34% mean accuracy on all 270 questions with eight responses each, versus cached Base 2.41%. Two training GPUs on gpu35/gpu36 only; benchmark evaluation examples excluded from training. training_active.
 
 ## Events
 
