@@ -29,6 +29,10 @@ Legacy references use different training budgets and lack the same benchmark ove
 
 Both native checkpoint ranks and all resume state passed validation; the final 20-file, 49.845 GB HF backup was independently verified. All 19 pre-evaluation rollout snapshots from steps 80–440 passed hashes and lineage checks. Steps 20/40/60 were not captured.
 
+## Continuation from step440 to840
+
+Continuation from preserved step440: 440/840 outer updates; latest validated save 440. Exactly400 additional updates authorized, same data/objective and two-GPU budget. The original step440 findings and KOR evaluation above remain preserved. authorized_400_update_continuation_preflight.
+
 ## Events
 
 | Event | Datetime | Action taken | Resolved |

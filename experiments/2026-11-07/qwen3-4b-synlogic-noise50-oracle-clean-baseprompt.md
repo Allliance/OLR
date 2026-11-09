@@ -52,6 +52,10 @@ All19 compressed rollout snapshots at80,100,…,440 passed file hashes and execu
 
 Final native checkpoint440 is retained locally and independently verified on [HF](https://huggingface.co/datasets/Alliiance/research-checkpoints), namespace `projects/OLR/runs/qwen3-4b-synlogic-noise50-oracle-clean-s42-20261107`, revision `54531684bf1a25c4258ac93acf064544424e9e17`: **20 files /49,845,137,044 bytes**, including both ranks and the final comparison marker. All training, publication and final-evaluation workers exited successfully. Allocation50146 remains held on gpu35 until2026-11-10T03:16:12Z; attach with `srun --jobid=50146 --overlap --pty bash`. No further idle renewal is enabled.
 
+## Continuation from step440 to840
+
+Continuation from preserved step440: 440/840 outer updates; latest validated save 440. Exactly400 additional updates authorized, same data/objective and two-GPU budget. The original step440 findings and KOR evaluation above remain preserved. authorized_400_update_continuation_preflight.
+
 ## Events
 
 | Event | Datetime | Action taken | Resolved |
