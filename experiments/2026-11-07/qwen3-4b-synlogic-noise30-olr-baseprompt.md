@@ -31,9 +31,12 @@ Use one physical GPU on gpu35/gpu36 only. Reuse one card from existing holder 50
 
 This is direct finite single-experiment training supervision, as in the earlier OLR recipe. No persistent shared experiment queue or multi-agent dispatcher is enabled by this request. Record runtime state outside Git. Publish only this run's complete checkpoints to the existing authorized HF namespace `projects/OLR/runs/qwen3-4b-synlogic-noise30-olr-s42-20261107`, through an independent CPU publisher.
 
-## Main Finding (Running)
+## Main Finding
 
-Training in progress; latest saved checkpoint 400/880 outer updates. One training GPU; validation data excluded from training. training_active.
+Finite training target: 880 outer updates on one GPU. Live progress and the
+current checkpoint are recorded in W&B and the external supervision state;
+this research note records the protocol and validated milestones. Validation
+examples are excluded from training.
 
 ## Events
 
@@ -84,3 +87,13 @@ Diagnostic replay preservation: compact per-step files keep the current attempt 
 Replay-preservation runtime validation: after the checkpoint410 handover, actual updates411–420 completed with finite metrics and the original LR. Native420 passed complete model/optimizer/scheduler/RNG/sampler/OLR validation (2100Adam updates;67200prompt visits). Archive419 contains160groups/1280responses and all13tensor fields, with matching complete/committed/independent validation markers. All21noise scalars were independently read back from W&B at421 and matched local records. HF publication remains quota-blocked at the verified remote checkpoint100; full raw rollout archives remain local.
 
 OLR boundary verification: native440 is complete and finite (2200Adam updates;70400prompt visits), with archive439 independently validated. Step440 used epoch4 and selected no groups; eligibility began at441/epoch5. All160first-step decisions matched an independent reconstruction from generated-answer histories and OLS slopes, with no original-label inputs; selected rewards matched the recorded selected targets. Of68selected modal answers,41were native-verifier correct and27incorrect (clean32/51;noisy9/17;no unverified selected groups). This single batch verifies instrumentation, not the early-correctness hypothesis. Actual W&B histories441–443 matched all21noise fields and all24diagnostic fields. Missing native correctness1–80 and exact-noise metrics1–110 remain explicit.
+
+Protocol interpretation: tied or inadmissible modal answers contribute 0.0 to
+the pass-rate history, matching the released weak-noise sentinel convention
+at commit da052ed8807691f6559c1e3ac9f5b4e1244680b1 (verified against the
+byte-identical upstream trainer and a native Math-Verify sentinel probe).
+Do not substitute a tied-count rate when reconstructing the actual selector.
+For this run, both `synlogic` and the legacy `synlogic-disjoint` validation
+keys cover all 270 questions; the older `disjoint` key covered 234. The
+separate audited key covers 254. Denominator equality alone does not repair
+the older runs' benchmark overlaps or make their training pools comparable.
