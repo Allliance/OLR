@@ -14,7 +14,7 @@ import numpy as np
 import torch
 
 from .observability import (commit_snapshot, file_digest, noisy_metrics, plain, snapshot_due,
-                            snapshot_payload, token_digest, validate_snapshot, write_snapshot)
+                            snapshot_payload, token_digest, validate_snapshot, write_diagnostic, write_snapshot)
 
 
 def fixture(real=False):
@@ -185,6 +185,64 @@ class ObservabilityTests(unittest.TestCase):
         self.assertEqual(result["api_key"], "[REDACTED]")
         self.assertEqual(result["token_file"], "[REDACTED]")
         self.assertEqual(result["max_prompt_tokens"], 24576)
+
+
+class DiagnosticPersistenceTests(unittest.TestCase):
+    def row(self, attempt=1):
+        return {"attempt": str(attempt), "training_update": 21,
+                "records": [{"raw_answers": ["old"], "training_rewards": [1.0]}]}
+
+    def test_rollback_preserves_previous_attempt_bytes_and_current_view(self):
+        with tempfile.TemporaryDirectory() as directory:
+            previous = self.row()
+            path = write_diagnostic(directory, previous)
+            # Migrate a legacy file without changing its exact serialized bytes.
+            legacy = json.dumps(previous, indent=2).encode() + b"\n"
+            path.write_bytes(legacy)
+            current = self.row(2)
+            current["records"][0].update(raw_answers=["new"], training_rewards=[0.0])
+            write_diagnostic(directory, current)
+            archived = Path(directory) / "superseded/attempt_1/step_21.json"
+            self.assertEqual(archived.read_bytes(), legacy)
+            self.assertEqual(json.loads(path.read_bytes()), current)
+            write_diagnostic(directory, self.row(3))
+            self.assertEqual(json.loads((Path(directory) / "superseded/attempt_2/step_21.json").read_bytes()), current)
+            self.assertEqual(archived.read_bytes(), legacy)
+
+    def test_identical_replay_is_idempotent_and_conflict_keeps_current_record(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = write_diagnostic(directory, self.row())
+            before = path.read_bytes()
+            self.assertEqual(write_diagnostic(directory, self.row()), path)
+            changed = self.row()
+            changed["records"][0]["training_rewards"] = [0.0]
+            with self.assertRaisesRegex(ValueError, "within an attempt"):
+                write_diagnostic(directory, changed)
+            self.assertEqual(path.read_bytes(), before)
+
+    def test_archive_conflict_cannot_destroy_predecessor(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = write_diagnostic(directory, self.row())
+            before = path.read_bytes()
+            archived = Path(directory) / "superseded/attempt_1/step_21.json"
+            archived.parent.mkdir(parents=True)
+            archived.write_bytes(b"other retained evidence")
+            with self.assertRaisesRegex(ValueError, "superseded"):
+                write_diagnostic(directory, self.row(2))
+            self.assertEqual(path.read_bytes(), before)
+            self.assertEqual(archived.read_bytes(), b"other retained evidence")
+
+    def test_failed_replacement_preserves_both_copies_and_can_retry(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = write_diagnostic(directory, self.row())
+            before = path.read_bytes()
+            with patch("synlogic.observability.atomic_json", side_effect=OSError("write failure")):
+                with self.assertRaises(OSError):
+                    write_diagnostic(directory, self.row(2))
+            self.assertEqual(path.read_bytes(), before)
+            self.assertEqual((Path(directory) / "superseded/attempt_1/step_21.json").read_bytes(), before)
+            write_diagnostic(directory, self.row(2))
+            self.assertEqual(json.loads(path.read_bytes()), self.row(2))
 
 
 if __name__ == "__main__":

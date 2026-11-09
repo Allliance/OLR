@@ -14,7 +14,7 @@ from src.syn_logic_reward import Data, SynLogicRewardManager, TaskDeadlineExceed
 
 from .refinement import OnlineLabelRefiner
 from .diagnostics import diagnose
-from .observability import atomic_json, commit_snapshot, noisy_metrics, plain, snapshot_due, snapshot_payload, token_digest, write_snapshot
+from .observability import atomic_json, commit_snapshot, noisy_metrics, plain, snapshot_due, snapshot_payload, token_digest, write_diagnostic, write_snapshot
 
 
 class ValidationRecorder:
@@ -140,10 +140,7 @@ class RefinementReward:
                      "attempt": os.environ.get("SYNLOGIC_ATTEMPT"),
                      "records": diagnostic_records, "metrics": diagnostic_metrics}
             directory = Path(self.trainer.config.trainer.default_local_dir).parent / "early_correctness"
-            directory.mkdir(parents=True, exist_ok=True)
-            temporary = directory / f"step_{step}.json.tmp"
-            temporary.write_text(json.dumps({**batch, "prompts": prompts}) + "\n")
-            temporary.replace(directory / f"step_{step}.json")
+            write_diagnostic(directory, {**batch, "prompts": prompts})
             self.correctness["batches"].append(batch)
             self.correctness["prompts"].update(prompts)
             self.correctness["through_step"] = step

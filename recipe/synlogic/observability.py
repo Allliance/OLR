@@ -47,6 +47,46 @@ def atomic_json(path, value):
     temporary.replace(path)
 
 
+def write_diagnostic(directory, value):
+    """Keep superseded attempts before replacing the legacy per-step view.
+
+    One trainer writes this directory. A conflicting record within an attempt
+    is an error; a new attempt may replay the step after checkpoint rollback.
+    """
+    directory = Path(directory)
+    step = int(value["training_update"])
+    attempt = str(value["attempt"])
+    if step < 1 or not attempt.isdecimal():
+        raise ValueError("Diagnostic step and attempt must be identified")
+    path = directory / f"step_{step}.json"
+    if path.exists():
+        previous_bytes = path.read_bytes()
+        previous = json.loads(previous_bytes)
+        if previous == value:
+            return path
+        previous_attempt = str(previous["attempt"])
+        if not previous_attempt.isdecimal() or previous["training_update"] != step:
+            raise ValueError("Existing diagnostic identity is invalid")
+        if previous_attempt == attempt:
+            raise ValueError("Conflicting diagnostic replay within an attempt")
+        archived = directory / "superseded" / f"attempt_{previous_attempt}" / path.name
+        archived.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            os.link(path, archived)
+        except FileExistsError:
+            if archived.read_bytes() != previous_bytes:
+                raise ValueError("Conflicting superseded diagnostic")
+        with archived.open("rb") as stream:
+            os.fsync(stream.fileno())
+        descriptor = os.open(archived.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+    atomic_json(path, value)
+    return path
+
+
 def token_digest(ids):
     return hashlib.sha256(ids.detach().cpu().contiguous().numpy().tobytes()).hexdigest()
 

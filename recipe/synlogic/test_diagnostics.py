@@ -115,12 +115,13 @@ class DiagnosticsTests(unittest.TestCase):
                 return {"reward_tensor": torch.tensor(values).reshape(8, 1), "reward_extra_info": {}}
 
         results = []
-        with tempfile.TemporaryDirectory() as directory, patch.dict(module.verifier_classes, {"test_task": Oracle}):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(module.verifier_classes, {"test_task": Oracle}), \
+                patch.dict("os.environ", {"SYNLOGIC_ATTEMPT": "1"}):
             for truth in (False, True):
                 Oracle.truth = truth
                 trainer = SimpleNamespace(global_steps=6, train_dataloader=[0], config=SimpleNamespace(
                     olr={"enabled": True, "start_select_epoch": 4, "slope_threshold": .05},
-                    trainer=SimpleNamespace(default_local_dir=str(Path(directory) / "checkpoints"))))
+                    trainer=SimpleNamespace(default_local_dir=str(Path(directory) / str(truth) / "checkpoints"))))
                 reward = module.RefinementReward(trainer, Reward())
                 for epoch, count in enumerate((2, 3, 4, 5, 6)):
                     reward.refiner.observe(1, ["a"] * count + [f"other-{i}" for i in range(8-count)], epoch)
