@@ -19,7 +19,11 @@ Keep the original clean half of the frozen SynLogic-Easy 50%-noise training corp
 
 - [Full settings, checkpoint provenance and final results](qwen3-4b-synlogic-noise50-oracle-clean-baseprompt.md)
 
-## Main Finding (Complete)
+## Authorized 400-update extension
+
+On 2026-11-09 the user authorized another 400 outer updates, from 440 to 840, with the same scientific settings and two-GPU budget. Checkpoint 440 remains preserved locally and on HF; its evaluations remain saved locally and on W&B; the latest independently verified remote checkpoint is 470. This extension is in progress. Native accuracy at step 500 is 39.352%, versus 41.667% at 440; no improvement is established. The linked run record contains the preservation and continuation details.
+
+## Main Finding (Completed step440 stage)
 
 Final native SynLogic mean accuracy is **41.667%** on 270 questions with eight responses each, versus cached initial Base **2.407%**. The fixed 254-question validity-audited score is **40.404%**.
 
@@ -28,6 +32,10 @@ The oracle-filtered final model scores **44.025% on KOR Logic** and **20.975% on
 Legacy references use different training budgets and lack the same benchmark overlap exclusions. These single-seed endpoints do not isolate the oracle filter alone.
 
 Both native checkpoint ranks and all resume state passed validation; the final 20-file, 49.845 GB HF backup was independently verified. All 19 pre-evaluation rollout snapshots from steps 80–440 passed hashes and lineage checks. Steps 20/40/60 were not captured.
+
+## Continuation from step440 to840
+
+Continuation from preserved step440: 500/840 outer updates; latest validated save 500. Exactly400 additional updates authorized, same data/objective and two-GPU budget. The original step440 findings and KOR evaluation above remain preserved. training_active.
 
 ## Events
 

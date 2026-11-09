@@ -23,7 +23,7 @@ Frozen data SHA-256:
 
 The user chose **ten passes**. Drop-last sampling gives 44 full 160-prompt batches/pass, with 22 remainder rows dropped and seeded reshuffling: **440 outer updates / 2,200 AdamW minibatch updates**. Use eight responses/prompt, optimizer minibatches of 32 prompts, LR1e-6 constant, weight decay .01, token-mean policy loss, clipping .2/.2, dual clip3, grad clip1, reference KL .001; GRPO, OLR disabled. Seed42; training temperature1, top-p1, top-k−1. Preserve prompts up to24,576 and responses up to4,096 tokens, truncation=error, thinking=False. Base ChatML is byte-identical to the earlier comparison; template SHA-256 `17762d2e5131cb2a950db7dd5700c50095547773d3302b52baebe9ae32257a55`.
 
-Use two DP/FSDP ranks and rollout TP1 on exactly two GPUs, restricted to gpu35/gpu36. Actual reference parameters retain the verified legacy CPU offload. Validate every20 updates at temperature.6 with eight responses on the unchanged270-question set; also report the pre-existing fixed254-question validity-audited metric. Reuse cached initial Base evaluations. Save at1, every10, final and lease drain; after verified HF quota recovery retain only the latest validated full native checkpoint and mirror that one checkpoint. Preserve rollout snapshots separately.
+Use two DP/FSDP ranks and rollout TP1 on exactly two GPUs, restricted to gpu35/gpu36. Actual reference parameters retain the verified legacy CPU offload. Validate every20 updates at temperature.6 with eight responses on the unchanged270-question set; also report the pre-existing fixed254-question validity-audited metric. Reuse cached initial Base evaluations. Save at1, every10, final and lease drain; during the original ten-pass stage retain only the latest validated full native checkpoint after verified HF quota recovery. The extension below additionally protects step440. Preserve rollout snapshots separately.
 
 Executed source changed after update70 only to add read-only diagnostics/rollout preservation, with scientific settings unchanged:
 
@@ -31,7 +31,15 @@ Executed source changed after update70 only to add read-only diagnostics/rollout
 - Instrumented code: [OLR8146a9d](https://github.com/Allliance/OLR/tree/8146a9d82c311e5c00611f30dae464710e19fa2b) and [framework97e82a5](https://github.com/Allliance/model-task-align-rl/tree/97e82a5292483caec77322bcc41a42909b22016d).
 - Independent CPU checks covered instrumentation isolation and replay, full-rank checkpoints, actual remote logging and publication. Claude reviewed the paired actual code diff read-only and found no bug invalidating this completed trajectory.
 
-## Main Finding (Complete)
+## Authorized 400-update extension
+
+On 2026-11-09 the user requested preserving checkpoint 440 and continuing for exactly 400 more outer updates, to **840 outer / 4,200 AdamW updates**. Resume the same complete model, optimizer, scheduler, RNG, dataloader and sampler state, with identical data, objective, LR and W&B identity. The 20-epoch loop ceiling accommodates the 840-update stopping target; it does not authorize 20 full passes.
+
+The 20-file checkpoint 440 is pinned in a separate local preservation directory with its original provenance and evaluations. Automatic native pruning is disabled; the supervisor retains 440 plus the newest fully validated recovery state and keeps compressed rollout snapshots separately. HF mirrors preserve 440 alongside the newest published state. A quota failure initially blocked new uploads; after an observed 197.94 GB drop in actual HF storage accounting, one bounded diagnostic published 470. Independent remote verification checked all 39 files across 440+470 and proved all 20 original checkpoint-440 hashes unchanged, at repository revision 788a8557a962314e8da2abbf7450bf1a0be3955c. Future publication is coalesced to 840; intermediate native recovery saves continue.
+
+This extension is **in progress**. Native evaluations at 460, 480 and 500 are 41.296%, 39.028% and 39.352%, respectively, compared with 41.667% at 440; these early scores do not show improvement. The actual 460 snapshot passed a full 1,280-rollout tensor/text/token/mask audit and correctly records resume 440. The existing KOR Logic/Cipher 250-question protocol is prepared for the final 840 actor, with a separate color and publication namespace preserving the 440 results. No additional benchmark or Base inference was started.
+
+## Main Finding (Completed step440 stage)
 
 Native final accuracy is **900/2,160 =41.667%**, versus cached Base2.407%. The validity-audited score is **821/2,032 =40.404%**. Both ranks' model/optimizer tensors are finite; all2,200 AdamW updates, scheduler, RNG, dataloader, sampler and label-history state are usable.
 
@@ -50,7 +58,11 @@ Legacy references use different training budgets and lack the same benchmark ove
 
 All19 compressed rollout snapshots at80,100,…,440 passed file hashes and execution-lineage checks; full1,280-rollout tensor/text/token/mask audits passed80,400,440. They preserve frozen labels, clean references, corruption flags, actual rewards/advantages and policy/update/config/source provenance. With no corrupted groups, noisy rates have denominator0 and remain undefined. Snapshots20/40/60 are unavailable. No unexpected non-drain rollback occurred; resuming checkpoint378 on the new lease lost no completed updates.
 
-Final native checkpoint440 is retained locally and independently verified on [HF](https://huggingface.co/datasets/Alliiance/research-checkpoints), namespace `projects/OLR/runs/qwen3-4b-synlogic-noise50-oracle-clean-s42-20261107`, revision `54531684bf1a25c4258ac93acf064544424e9e17`: **20 files /49,845,137,044 bytes**, including both ranks and the final comparison marker. All training, publication and final-evaluation workers exited successfully. Allocation50146 remains held on gpu35 until2026-11-10T03:16:12Z; attach with `srun --jobid=50146 --overlap --pty bash`. No further idle renewal is enabled.
+Original native checkpoint440 was independently verified at completion on [HF](https://huggingface.co/datasets/Alliiance/research-checkpoints), namespace `projects/OLR/runs/qwen3-4b-synlogic-noise50-oracle-clean-s42-20261107`, revision `54531684bf1a25c4258ac93acf064544424e9e17`: **20 files /49,845,137,044 bytes**, including both ranks and the final comparison marker. At the end of the original440 stage, training, publication and final-evaluation workers had exited successfully. The continuation reuses current allocation50146 on gpu35, expiring2026-11-10T03:16:12Z; attach with `srun --jobid=50146 --overlap --pty bash`. No idle renewal is enabled; bounded renewals toward the newly authorized840 endpoint preserve the two-GPU cap.
+
+## Continuation from step440 to840
+
+Continuation from preserved step440: 500/840 outer updates; latest validated save 500. Exactly400 additional updates authorized, same data/objective and two-GPU budget. The original step440 findings and KOR evaluation above remain preserved. training_active.
 
 ## Events
 
