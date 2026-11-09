@@ -19,7 +19,11 @@ Keep the original clean half of the frozen SynLogic-Easy 50%-noise training corp
 
 - [Full settings, checkpoint provenance and final results](qwen3-4b-synlogic-noise50-oracle-clean-baseprompt.md)
 
-## Main Finding (Complete)
+## Authorized 400-update extension
+
+On 2026-11-09 the user authorized another 400 outer updates, from 440 to 840, with the same scientific settings and two-GPU budget. Checkpoint 440 remains preserved locally and on HF; its evaluations remain saved locally and on W&B; the latest independently verified remote checkpoint is 470. This extension is in progress. Native accuracy at step 500 is 39.352%, versus 41.667% at 440; no improvement is established. The linked run record contains the preservation and continuation details.
+
+## Main Finding (Completed step440 stage)
 
 Final native SynLogic mean accuracy is **41.667%** on 270 questions with eight responses each, versus cached initial Base **2.407%**. The fixed 254-question validity-audited score is **40.404%**.
 
