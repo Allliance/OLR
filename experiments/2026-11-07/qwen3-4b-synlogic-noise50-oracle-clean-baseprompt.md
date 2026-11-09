@@ -62,7 +62,7 @@ Original native checkpoint440 was independently verified at completion on [HF](h
 
 ## Continuation from step440 to840
 
-Continuation from preserved step440: 500/840 outer updates; latest validated save 500. Exactly400 additional updates authorized, same data/objective and two-GPU budget. The original step440 findings and KOR evaluation above remain preserved. training_active.
+Continuation from preserved step440: 530/840 outer updates; latest validated save 530. Exactly400 additional updates authorized, same data/objective and two-GPU budget. The original step440 findings and KOR evaluation above remain preserved. storage_protective_stop_requires_diagnosis.
 
 ## Events
 
