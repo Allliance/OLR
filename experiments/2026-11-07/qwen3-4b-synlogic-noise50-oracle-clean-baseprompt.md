@@ -31,15 +31,13 @@ Executed source changed after update70 only to add read-only diagnostics/rollout
 - Instrumented code: [OLR8146a9d](https://github.com/Allliance/OLR/tree/8146a9d82c311e5c00611f30dae464710e19fa2b) and [framework97e82a5](https://github.com/Allliance/model-task-align-rl/tree/97e82a5292483caec77322bcc41a42909b22016d).
 - Independent CPU checks covered instrumentation isolation and replay, full-rank checkpoints, actual remote logging and publication. Claude reviewed the paired actual code diff read-only and found no bug invalidating this completed trajectory.
 
-## Authorized 400-update extension
+## User-stopped continuation
 
-On 2026-11-09 the user requested preserving checkpoint 440 and continuing for exactly 400 more outer updates, to **840 outer / 4,200 AdamW updates**. Resume the same complete model, optimizer, scheduler, RNG, dataloader and sampler state, with identical data, objective, LR and W&B identity. The 20-epoch loop ceiling accommodates the 840-update stopping target; it does not authorize 20 full passes.
+On2026-11-09 the user authorized preserving440 and continuing400 outer updates to840, with identical data, objective, LR, optimizer/scheduler/RNG/dataloader/sampler state and W&B identity. The20-epoch ceiling only accommodated that planned target. On2026-11-10 the user explicitly stopped training as converged and requested only the current-versus-previous KOR comparison. The latest complete saved state is **650 outer /3,250 AdamW updates**,210 committed outer updates beyond440. The native process had reported659 completed iterations and was updating660 when stopped; unsaved651–659 and the partial660 update are not represented in checkpoint650.840 is cancelled; training restart and renewal latches remain set.
 
-The 20-file checkpoint 440 is pinned in a separate local preservation directory with its original provenance and evaluations. Automatic native pruning is disabled; the supervisor retains 440 plus the newest fully validated recovery state and keeps compressed rollout snapshots separately. HF mirrors preserve 440 alongside the newest published state. A quota failure initially blocked new uploads; after an observed 197.94 GB drop in actual HF storage accounting, one bounded diagnostic published 470. Independent remote verification checked all 39 files across 440+470 and proved all 20 original checkpoint-440 hashes unchanged, at repository revision 788a8557a962314e8da2abbf7450bf1a0be3955c. Publication continues at milestones 600 and 840, with 440 protected; intermediate native recovery saves continue.
+Checkpoint650 passed complete finite model/optimizer checks for both ranks and includes scheduler,RNG,dataloader,sampler and label history. Separate preservation directories retain440 and650, with immutable large state hardlinked and small metadata copied and hash checked. The current HF mirror independently verifies40 files /99,691,928,394 bytes across440+650, with all20 original440 hashes unchanged, at revision 171c6f9750e86e99621bf895196d412c51e8a5bb. Intermediate recovery saves and compressed rollout snapshots remain distinct. The last scheduled native SynLogic evaluation was at640:40.602% on270 questions×8 responses, and39.222% on the fixed254-question validity-audited subset; these are not650 evaluations.
 
-This extension is **in progress**. Native evaluations at 460, 480 and 500 are 41.296%, 39.028% and 39.352%, respectively, compared with 41.667% at 440; these early scores do not show improvement. The actual 460 snapshot passed a full 1,280-rollout tensor/text/token/mask audit and correctly records resume 440. The existing KOR Logic/Cipher 250-question protocol is prepared for the final 840 actor, with a separate color and publication namespace preserving the 440 results. No additional benchmark or Base inference was started.
-
-A later shared-storage pause discarded completed updates 541–542 and part of 543 from execution attempt 8; training resumed the complete 540 state. Abandoned scalar logs remain preserved. Removing 305.79GiB of verified unused pretrained-weight cache restored headroom, and the resumed trajectory produced a finite two-rank 550 checkpoint with 2,750 AdamW updates. Scientific settings and the 840-update endpoint remain fixed.
+A shared-storage rollback earlier discarded completed541–542 and partial543 from attempt8; training resumed the full540 state, with abandoned logs retained. Verified unused pretrained-weight and completed evaluation download caches restored headroom. Subsequent checkpoints and the600 rollout semantic audit passed; scientific settings stayed unchanged.
 
 ## Main Finding (Completed step440 stage)
 
@@ -58,13 +56,30 @@ Pass@k for k=1,2,4,8,16 uses the standard combination estimate from16 saved resp
 
 Legacy references use different training budgets and lack the same benchmark overlap exclusions. These single-seed endpoints do not isolate the oracle filter alone. Oracle Logic pass@16 is slightly below the old clean endpoint (65.2% vs66.4%); Cipher pass@16 matches it (39.2%). Do not describe every metric as improved.
 
-All19 compressed rollout snapshots at80,100,…,440 passed file hashes and execution-lineage checks; full1,280-rollout tensor/text/token/mask audits passed80,400,440. They preserve frozen labels, clean references, corruption flags, actual rewards/advantages and policy/update/config/source provenance. With no corrupted groups, noisy rates have denominator0 and remain undefined. Snapshots20/40/60 are unavailable. No unexpected non-drain rollback occurred; resuming checkpoint378 on the new lease lost no completed updates.
+All19 compressed rollout snapshots at80,100,…,440 passed file hashes and execution-lineage checks; full1,280-rollout tensor/text/token/mask audits passed80,400,440. They preserve frozen labels, clean references, corruption flags, actual rewards/advantages and policy/update/config/source provenance. With no corrupted groups, noisy rates have denominator0 and remain undefined. Snapshots20/40/60 are unavailable. During the original440 stage, no unexpected non-drain rollback occurred; resuming checkpoint378 on the new lease lost no completed updates.
 
-Original native checkpoint440 was independently verified at completion on [HF](https://huggingface.co/datasets/Alliiance/research-checkpoints), namespace `projects/OLR/runs/qwen3-4b-synlogic-noise50-oracle-clean-s42-20261107`, revision `54531684bf1a25c4258ac93acf064544424e9e17`: **20 files /49,845,137,044 bytes**, including both ranks and the final comparison marker. At the end of the original440 stage, training, publication and final-evaluation workers had exited successfully. The continuation reuses current allocation50146 on gpu35, expiring2026-11-10T03:16:12Z; attach with `srun --jobid=50146 --overlap --pty bash`. No idle renewal is enabled; bounded renewals toward the newly authorized840 endpoint preserve the two-GPU cap.
+Original native checkpoint440 was independently verified at completion on [HF](https://huggingface.co/datasets/Alliiance/research-checkpoints), namespace `projects/OLR/runs/qwen3-4b-synlogic-noise50-oracle-clean-s42-20261107`, revision `54531684bf1a25c4258ac93acf064544424e9e17`: **20 files /49,845,137,044 bytes**, including both ranks and the final comparison marker. At the end of the original440 stage, training, publication and final-evaluation workers had exited successfully. The subsequent extension used allocations50146 and50151 sequentially, maintaining the two-GPU cap; it is now user-stopped as documented below.
 
-## Continuation from step440 to840
+## KOR comparison after the user stop
 
-Continuation from preserved step440: 600/840 outer updates; latest validated save 600. Exactly400 additional updates authorized, same data/objective and two-GPU budget. The original step440 findings and KOR evaluation above remain preserved. training_active.
+Only preserved440 and latest saved650 are compared on the same250 questions per benchmark,16 responses each, with the frozen official scorer, template and inference protocol above. Only650 required new inference; all8,000 new responses were independently rescored and prior440 responses were reused. Both saved checkpoint ranks were checked exactly at BF16 precision and passed finite CPU inference before evaluation. No Base inference or other benchmark evaluation was started.
+
+| Benchmark | k | Step440 | Step650 | Change (pp) |
+|---|---:|---:|---:|---:|
+| KOR Logic | 1 | 44.025% | 41.675% | -2.350 |
+| KOR Logic | 2 | 51.237% | 48.160% | -3.077 |
+| KOR Logic | 4 | 57.327% | 53.935% | -3.392 |
+| KOR Logic | 8 | 62.073% | 58.897% | -3.177 |
+| KOR Logic | 16 | 65.200% | 62.800% | -2.400 |
+| KOR Cipher | 1 | 20.975% | 19.525% | -1.450 |
+| KOR Cipher | 2 | 25.397% | 25.230% | -0.167 |
+| KOR Cipher | 4 | 29.687% | 31.376% | +1.689 |
+| KOR Cipher | 8 | 34.079% | 37.708% | +3.628 |
+| KOR Cipher | 16 | 39.200% | 43.600% | +4.400 |
+
+Additional training lowered pass@1 on both benchmarks and every reported Logic pass@k. Cipher pass@4,pass@8 andpass@16 increased, so the result should not be described as uniform degradation. This is a single-seed sampled endpoint comparison using the same filtered training corpus.
+
+The four actual W&B plots and20-row table were downloaded and checked for values,250-question counts and distinct440/650 colors, under `kor/continuation650/`. All original440 plot/table references and file hashes remain unchanged. Training is stopped; the retained two-GPU allocation50151 on gpu35 expires2026-11-11T03:17:09Z. Attach with `srun --jobid=50151 --overlap --pty bash`; no idle renewal is enabled.
 
 ## Events
 
@@ -76,3 +91,6 @@ Continuation from preserved step440: 600/840 outer updates; latest validated sav
 | Native training complete | 2026-11-09T07:35:00Z | Verify final440 and full two-rank state. | Yes |
 | Final HF backup verified | 2026-11-09T07:51:00Z | Recover quota, coalesce intermediate uploads, independently verify final20-file payload. | Yes |
 | KOR plots remotely verified | 2026-11-09T07:53:27Z | Complete500 questions×16 responses, independent scoring, pass@k and colored W&B publication. | Yes |
+| User stopped continuation | 2026-11-10T07:54:44Z | Stop native training, preserve latest complete650 and original440; disable restart/renewal. | Yes |
+| Two-checkpoint KOR comparison | 2026-11-10T08:15:10Z | Evaluate only650 on250 Logic+250 Cipher questions×16; reuse440; independently verify scores and four W&B plots/20 rows. | Yes |
+| Stopped checkpoint backup | 2026-11-10T08:18:40Z | Independently verify40 HF payload files across440+650 and all20 unchanged440 hashes. | Yes |

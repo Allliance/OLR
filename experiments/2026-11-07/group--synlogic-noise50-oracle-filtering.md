@@ -19,9 +19,11 @@ Keep the original clean half of the frozen SynLogic-Easy 50%-noise training corp
 
 - [Full settings, checkpoint provenance and final results](qwen3-4b-synlogic-noise50-oracle-clean-baseprompt.md)
 
-## Authorized 400-update extension
+## User-stopped continuation
 
-On 2026-11-09 the user authorized another 400 outer updates, from 440 to 840, with the same scientific settings and two-GPU budget. Checkpoint 440 remains preserved locally and on HF; its evaluations remain saved locally and on W&B; the latest independently verified remote checkpoint is 470. This extension is in progress. Native accuracy at step 500 is 39.352%, versus 41.667% at 440; no improvement is established. The linked run record contains the preservation and continuation details.
+The user initially authorized another400 outer updates from440 to840, preserving the original checkpoint. On2026-11-10 the user explicitly stopped training and requested only the current-versus-previous KOR comparison. The latest complete saved checkpoint is **650 outer /3,250 AdamW updates**, representing210 committed additional outer updates. Automatic training restarts and allocation renewals are disabled;840 was cancelled.
+
+Both440 and650 are preserved locally and on HF. The independently verified remote mirror contains40 files /99,691,928,394 bytes; all20 original440 file hashes remain unchanged. The linked run record documents the frozen protocol, full pass@k results and stop details.
 
 ## Main Finding (Completed step440 stage)
 
@@ -33,9 +35,14 @@ Legacy references use different training budgets and lack the same benchmark ove
 
 Both native checkpoint ranks and all resume state passed validation; the final 20-file, 49.845 GB HF backup was independently verified. All 19 pre-evaluation rollout snapshots from steps 80–440 passed hashes and lineage checks. Steps 20/40/60 were not captured.
 
-## Continuation from step440 to840
+## KOR comparison after the user stop
 
-Continuation from preserved step440: 600/840 outer updates; latest validated save 600. Exactly400 additional updates authorized, same data/objective and two-GPU budget. The original step440 findings and KOR evaluation above remain preserved. training_active.
+| Benchmark | Step440 pass@1 | Step650 pass@1 | Step440 pass@16 | Step650 pass@16 |
+|---|---:|---:|---:|---:|
+| KOR Logic | 44.025% | 41.675% | 65.2% | 62.8% |
+| KOR Cipher | 20.975% | 19.525% | 39.2% | 43.6% |
+
+Additional training lowered pass@1 on both benchmarks; Cipher pass@16 increased. Four actual W&B plots and the20-row table were remotely verified, with separate colors and the original440 assets preserved. Only these two Oracle checkpoints were compared; no other benchmark or Base inference ran.
 
 ## Events
 
@@ -47,3 +54,6 @@ Continuation from preserved step440: 600/840 outer updates; latest validated sav
 | Native endpoint validated | 2026-11-09T07:35:00Z | Validate 440 outer/2,200 AdamW updates and both ranks' full state. | Yes |
 | Final HF publication | 2026-11-09T07:51:00Z | Independently verify checkpoint 440, all 20 payload files and both ranks after quota recovery. | Yes |
 | Final KOR publication | 2026-11-09T07:53:27Z | Independently verify all 8,000 scores, six actual W&B plots, 40 table rows and model/task tags. | Yes |
+| User stopped continuation | 2026-11-10T07:54:44Z | Stop native training, preserve latest complete650 and original440; disable restart/renewal. | Yes |
+| Two-checkpoint KOR comparison | 2026-11-10T08:15:10Z | Evaluate only650 on250 Logic+250 Cipher questions×16; reuse440; independently verify scores and four W&B plots/20 rows. | Yes |
+| Stopped checkpoint backup | 2026-11-10T08:18:40Z | Independently verify40 HF payload files across440+650 and all20 unchanged440 hashes. | Yes |
