@@ -76,6 +76,21 @@ def worker(folder):
         if 'oracle-clean' in state['protocol_id'] or '_synlogic_sampler' in loader:
             require(isinstance(loader.get('_synlogic_sampler'),dict)
                     and loader['_synlogic_sampler'].get('version')==1,'Missing or invalid resumable sampler')
+        if "clean-to-noisy" in state["protocol_id"]:
+            from curriculum import CurriculumDataLoader
+            from types import SimpleNamespace
+            import pyarrow.parquet as pq
+            run = folder.parent.parent
+            metadata = json.loads((run / "portable-provenance.json").read_text())
+            rows = pq.read_table(run.parent.parent / "data/prepared/clean-to-noisy.parquet").to_pylist()
+            class Frame:
+                def to_list(self): return rows
+            original = SimpleNamespace(dataset=SimpleNamespace(dataframe=Frame()),
+                                       batch_size=160, num_workers=0, drop_last=True, collate_fn=None)
+            restored = CurriculumDataLoader(original, **metadata["curriculum"])
+            restored.load_state_dict(loader)
+            require(restored.position == step - 440, "Curriculum position mismatch")
+            require(not state["refiner"]["config"]["enabled"], "Curriculum must disable OLR")
         for proof in proofs:proof.pop('shapes')
         result={'step':step,'validated':True,'world_size':world,'model_parameters':parameters,
             'protocol_id':state['protocol_id'],'prompt_template_sha256':PINNED_TEMPLATE_SHA256,

@@ -9,7 +9,7 @@ import shlex
 import sys
 
 CONDITIONS = ("full-clean", "noise90", "noise70", "noise50", "noise30-olr",
-              "noise90-olr", "noise70-olr", "noise50-olr", "noise50-oracle-clean")
+              "noise90-olr", "noise70-olr", "noise50-olr", "noise50-oracle-clean", "clean-to-noisy")
 
 
 def prepared_metadata(root, condition):
@@ -40,14 +40,14 @@ def overrides(root, condition, framework_code):
     spec = importlib.util.spec_from_file_location("single_card_config", framework_code / "tools/train_single_card.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    base = "full-clean" if condition == "noise50-oracle-clean" else condition.removesuffix("-olr")
+    base = "full-clean" if condition in {"noise50-oracle-clean", "clean-to-noisy"} else condition.removesuffix("-olr")
     values = module.overrides(root, base)
     metadata = prepared_metadata(root, condition)
     gpus = int(metadata.get("budget", {}).get("max_concurrent_training_gpus", 1))
     replacements = {
         "trainer.n_gpus_per_node": str(gpus),
         "actor_rollout_ref.actor.fsdp_config.fsdp_size": str(gpus),
-        "data.train_files": str(root / "data/prepared" / (condition + ".parquet")) if condition == "noise50-oracle-clean" else str(root / "data/prepared" / (base + ".parquet")),
+        "data.train_files": str(root / "data/prepared" / (condition + ".parquet")) if condition in {"noise50-oracle-clean", "clean-to-noisy"} else str(root / "data/prepared" / (base + ".parquet")),
         "+data.dataloader_num_workers": "0",
         "data.train_batch_size": "160", "data.gen_batch_size": "160",
         "data.max_prompt_length": "24576", "data.truncation": "error",
@@ -67,7 +67,7 @@ def overrides(root, condition, framework_code):
         "actor_rollout_ref.rollout.val_kwargs.temperature": "0.6",
         "actor_rollout_ref.rollout.val_kwargs.top_p": "1.0",
         "reward_model.score_type": "acc_without_think_format",
-        "trainer.total_training_steps": str(metadata["target_updates"]), "trainer.total_epochs": "10" if condition == "noise50-oracle-clean" else "10000",
+        "trainer.total_training_steps": str(metadata["target_updates"]), "trainer.total_epochs": "10" if condition in {"noise50-oracle-clean", "clean-to-noisy"} else "10000",
         "trainer.experiment_name": metadata["experiment_name"],
         "trainer.default_local_dir": str(root / "runs" / condition / "checkpoints"),
         "hydra.run.dir": str(root / "runs" / condition / "hydra"),
@@ -91,6 +91,9 @@ def overrides(root, condition, framework_code):
     values.append("+evaluation.invalid_indices=[10,11,12,13,14,15,16,17,18,19,170,172,174,177,178,179]")
     values += ["+provenance.protocol_id=" + metadata["protocol_id"],
                "+provenance.prompt_template_sha256=" + metadata["prompt_template_sha256"]]
+    if condition == "clean-to-noisy":
+        values += ["+curriculum." + key + "=" + json.dumps(value)
+                   for key, value in metadata["curriculum"].items()]
     return values
 
 

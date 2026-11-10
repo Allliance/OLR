@@ -28,6 +28,10 @@ class TaskRunner:
         from verl.trainer.ppo.ray_trainer import ResourcePoolManager, Role
         from src.syn_logic_reward import SynLogicRewardManager
         from .trainer import SynLogicOLRTrainer
+        from .curriculum import CurriculumMixin
+
+        class CurriculumTrainer(CurriculumMixin, SynLogicOLRTrainer):
+            pass
         from .template import verify_base_template
 
         OmegaConf.resolve(config)
@@ -44,7 +48,8 @@ class TaskRunner:
         # OLR's paper uses verifier accuracy, without a separate reasoning-tag
         # format bonus. Answer extraction and the fixed-label matcher remain
         # identical in every condition; validation always uses native true labels.
-        trainer = SynLogicOLRTrainer(
+        trainer_type = CurriculumTrainer if "curriculum" in config else SynLogicOLRTrainer
+        trainer = trainer_type(
             config=config, tokenizer=tokenizer, processor=None,
             role_worker_mapping=roles, resource_pool_manager=manager,
             ray_worker_group_cls=RayWorkerGroup,
