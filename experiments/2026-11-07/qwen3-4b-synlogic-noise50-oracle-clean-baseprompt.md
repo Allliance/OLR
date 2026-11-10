@@ -35,11 +35,11 @@ Executed source changed after update70 only to add read-only diagnostics/rollout
 
 On 2026-11-09 the user requested preserving checkpoint 440 and continuing for exactly 400 more outer updates, to **840 outer / 4,200 AdamW updates**. Resume the same complete model, optimizer, scheduler, RNG, dataloader and sampler state, with identical data, objective, LR and W&B identity. The 20-epoch loop ceiling accommodates the 840-update stopping target; it does not authorize 20 full passes.
 
-The 20-file checkpoint 440 is pinned in a separate local preservation directory with its original provenance and evaluations. Automatic native pruning is disabled; the supervisor retains 440 plus the newest fully validated recovery state and keeps compressed rollout snapshots separately. HF mirrors preserve 440 alongside the newest published state. A quota failure initially blocked new uploads; after an observed 197.94 GB drop in actual HF storage accounting, one bounded diagnostic published 470. Independent remote verification checked all 39 files across 440+470 and proved all 20 original checkpoint-440 hashes unchanged, at repository revision 788a8557a962314e8da2abbf7450bf1a0be3955c. Future publication is coalesced to 840; intermediate native recovery saves continue.
+The 20-file checkpoint 440 is pinned in a separate local preservation directory with its original provenance and evaluations. Automatic native pruning is disabled; the supervisor retains 440 plus the newest fully validated recovery state and keeps compressed rollout snapshots separately. HF mirrors preserve 440 alongside the newest published state. A quota failure initially blocked new uploads; after an observed 197.94 GB drop in actual HF storage accounting, one bounded diagnostic published 470. Independent remote verification checked all 39 files across 440+470 and proved all 20 original checkpoint-440 hashes unchanged, at repository revision 788a8557a962314e8da2abbf7450bf1a0be3955c. Publication continues at milestones 600 and 840, with 440 protected; intermediate native recovery saves continue.
 
 This extension is **in progress**. Native evaluations at 460, 480 and 500 are 41.296%, 39.028% and 39.352%, respectively, compared with 41.667% at 440; these early scores do not show improvement. The actual 460 snapshot passed a full 1,280-rollout tensor/text/token/mask audit and correctly records resume 440. The existing KOR Logic/Cipher 250-question protocol is prepared for the final 840 actor, with a separate color and publication namespace preserving the 440 results. No additional benchmark or Base inference was started.
 
-## Main Finding (Completed step440 stage)
+A later shared-storage pause discarded completed updates 541–542 and part of 543 from execution attempt 8; training resumed the complete 540 state. Abandoned scalar logs remain preserved. Removing 305.79GiB of verified unused pretrained-weight cache restored headroom, and the resumed trajectory produced a finite two-rank 550 checkpoint with 2,750 AdamW updates. Scientific settings and the 840-update endpoint remain fixed.\n\n## Main Finding (Completed step440 stage)
 
 Native final accuracy is **900/2,160 =41.667%**, versus cached Base2.407%. The validity-audited score is **821/2,032 =40.404%**. Both ranks' model/optimizer tensors are finite; all2,200 AdamW updates, scheduler, RNG, dataloader, sampler and label-history state are usable.
 
@@ -62,7 +62,7 @@ Original native checkpoint440 was independently verified at completion on [HF](h
 
 ## Continuation from step440 to840
 
-Continuation from preserved step440: 542/840 outer updates; latest validated save 540. Exactly400 additional updates authorized, same data/objective and two-GPU budget. The original step440 findings and KOR evaluation above remain preserved. storage_protective_stop_requires_diagnosis.
+Continuation from preserved step440: 551/840 outer updates; latest validated save 550. Exactly400 additional updates authorized, same data/objective and two-GPU budget. The original step440 findings and KOR evaluation above remain preserved. training_active.
 
 ## Events
 
