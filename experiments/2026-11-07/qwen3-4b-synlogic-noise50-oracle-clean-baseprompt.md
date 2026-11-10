@@ -39,7 +39,9 @@ The 20-file checkpoint 440 is pinned in a separate local preservation directory 
 
 This extension is **in progress**. Native evaluations at 460, 480 and 500 are 41.296%, 39.028% and 39.352%, respectively, compared with 41.667% at 440; these early scores do not show improvement. The actual 460 snapshot passed a full 1,280-rollout tensor/text/token/mask audit and correctly records resume 440. The existing KOR Logic/Cipher 250-question protocol is prepared for the final 840 actor, with a separate color and publication namespace preserving the 440 results. No additional benchmark or Base inference was started.
 
-A later shared-storage pause discarded completed updates 541–542 and part of 543 from execution attempt 8; training resumed the complete 540 state. Abandoned scalar logs remain preserved. Removing 305.79GiB of verified unused pretrained-weight cache restored headroom, and the resumed trajectory produced a finite two-rank 550 checkpoint with 2,750 AdamW updates. Scientific settings and the 840-update endpoint remain fixed.\n\n## Main Finding (Completed step440 stage)
+A later shared-storage pause discarded completed updates 541–542 and part of 543 from execution attempt 8; training resumed the complete 540 state. Abandoned scalar logs remain preserved. Removing 305.79GiB of verified unused pretrained-weight cache restored headroom, and the resumed trajectory produced a finite two-rank 550 checkpoint with 2,750 AdamW updates. Scientific settings and the 840-update endpoint remain fixed.
+
+## Main Finding (Completed step440 stage)
 
 Native final accuracy is **900/2,160 =41.667%**, versus cached Base2.407%. The validity-audited score is **821/2,032 =40.404%**. Both ranks' model/optimizer tensors are finite; all2,200 AdamW updates, scheduler, RNG, dataloader, sampler and label-history state are usable.
 
