@@ -143,5 +143,3 @@ class CurriculumMixin:
                         "curriculum/clean_groups": loader.batch_size - actual,
                         "curriculum/noise_fraction": actual / loader.batch_size,
                         "curriculum/warmup": int(step <= loader.protocol["warmup_steps"])})
-        if step == 1:
-            self._save_checkpoint()
