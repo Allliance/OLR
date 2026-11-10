@@ -163,7 +163,10 @@ class RolloutObserver:
         except (Exception, TaskDeadlineExceeded):assigned_failed=True
         try:
             extra=frame['original_extra']
-            game=Data.from_json_str(extra['game_data_str']) if 'game_data_str' in extra else deepcopy(extra['game_data'])
+            source_key='original_game_data_str' if frame['corrupted'] else 'game_data_str'
+            if frame['corrupted'] and source_key not in extra:
+                raise ValueError('Missing original clean reference for noisy diagnostic')
+            game=Data.from_json_str(extra[source_key]) if source_key in extra else deepcopy(extra['game_data'])
             with verifier_deadline(), open(os.devnull,'w') as sink, redirect_stdout(sink), redirect_stderr(sink):
                 native=int(bool(verifier.verify(game, extracted)))
         except (Exception, TaskDeadlineExceeded):native_failed=True
@@ -201,7 +204,7 @@ class RolloutObserver:
         diagnostics={
             'noisy_question_group_active_rate':rate(active,len(noisy)),
             'noisy_rollout_assigned_label_match_rate':rate(assigned_n,assigned_d),
-            'noisy_rollout_original_verifier_correctness_rate':rate(native_n,native_d),
+            'noisy_rollout_original_verifier_correctness_rate_v2':rate(native_n,native_d),
             'assigned_label_scoring_coverage':rate(assigned_d,noisy_rollouts),
             'original_reference_scoring_coverage':rate(native_d,noisy_rollouts),
             'original_verifier_success_coverage':rate(native_d-parse_fail,noisy_rollouts)}
@@ -232,12 +235,16 @@ class RolloutObserver:
                 'response_text':tokenizer.decode(response_ids,skip_special_tokens=False),
                 'prompt_token_ids':prompt_ids,'response_token_ids':response_ids,
                 'frozen_assigned_label':frame['frozen_assigned_label'],
-                'original_clean_reference':frame['original_extra'],
+                'original_clean_reference':{
+                    'task':frame['task'],'index':frame['question_index'],
+                    'source_field':'original_game_data_str' if frame['corrupted'] else 'game_data_str',
+                    'game_data_str':frame['original_extra'].get('original_game_data_str' if frame['corrupted'] else 'game_data_str'),
+                    'available':isinstance(frame['original_extra'].get('original_game_data_str' if frame['corrupted'] else 'game_data_str'),str)},
                 'effective_optimization_label':frame['effective_optimization_label'],
                 'effective_optimization_extra':frame['effective_optimization_extra'],
                 'originally_corrupted':frame['corrupted'],'diagnostics':diagnostic_rows.get(i)})
         assert len(rows)==len(batch) and len({r['rollout_id'] for r in rows})==len(rows)
-        metadata={'schema_version':1,'execution_id':self.execution,'training_step':step,
+        metadata={'schema_version':2,'execution_id':self.execution,'training_step':step,
             'update_version':int(getattr(self.trainer,'_completed_updates',step)),
             'rollout_policy_version':self.rollout_policy_version,'evaluation_step':step+1,
             'resumed_from_step':self.resumed_from_step,
@@ -246,6 +253,7 @@ class RolloutObserver:
             'configuration':configuration,'configuration_sha256':hashlib.sha256(encoded(configuration)).hexdigest(),
             'source_provenance':provenance,'diagnostics':diagnostics,
             'assigned_match_definition':'Frozen dataset assigned target, before OLR replacement',
+            'original_reference_definition':'For noisy rows use only original_game_data_str; missing originals are verifier failures, never fallback to corrupted game data',
             'scoring_coverage_definition':'Unparseable responses are known incorrect; verifier errors are unknown. Native verifier successes exclude parse failures.',
             'active_definition':'Any exactly nonzero advantage at a valid response token within a noisy group'}
         payload={'metadata':plain(metadata),'rows':plain(rows),

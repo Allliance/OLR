@@ -25,6 +25,23 @@ import unittest
 from unittest.mock import patch
 
 class ObservabilityTests(unittest.TestCase):
+    def test_corrupted_record_cannot_be_used_as_original_reference(self):
+        with patch.dict(verifier_classes, {"__observation_test__":Verifier}):
+            observer=object.__new__(RolloutObserver)
+            extra={'assigned_answer_key':'bad',
+                'game_data_str':json.dumps({'question':'q','answer':'bad','metadata':{}}),
+                'original_game_data_str':json.dumps({'question':'q','answer':'good','metadata':{}})}
+            frame={'task':'__observation_test__','corrupted':True,'original_extra':extra}
+            before=deepcopy(frame)
+            self.assertEqual(observer._score('<answer>bad</answer>',frame),(1,0,False,False,False))
+            self.assertEqual(observer._score('<answer>good</answer>',frame),(0,1,False,False,False))
+            self.assertEqual(frame,before)
+            del extra['original_game_data_str']
+            assigned,native,af,nf,pf=observer._score('<answer>bad</answer>',frame)
+            self.assertEqual(assigned,1)
+            self.assertIsNone(native)
+            self.assertFalse(af);self.assertTrue(nf);self.assertFalse(pf)
+
     def test_complete_read_only_observation_contract(self):
         self.assertEqual(torch.cuda.device_count(),0)
         with patch.dict(os.environ), patch.dict(verifier_classes, {"__observation_test__":Verifier}):
@@ -35,13 +52,14 @@ class ObservabilityTests(unittest.TestCase):
                 trainer=SimpleNamespace(config=OmegaConf.create({'trainer':{'default_local_dir':temporary+'/checkpoints',
                     'test_freq':20,'total_training_steps':440},'actor_rollout_ref':{'rollout':{'n':4}},
                     'data':{'train_batch_size':2},'provenance':{'protocol_id':'test-baseprompt'}}),
-                    global_steps=20,_completed_updates=19,reward_fn=SimpleNamespace(reward=SimpleNamespace(tokenizer=Tokenizer())))
+                    global_steps=19,_completed_updates=18,reward_fn=SimpleNamespace(reward=SimpleNamespace(tokenizer=Tokenizer())))
                 observer=RolloutObserver(trainer)
                 originals=[]
                 for i,uid in enumerate(['g0','g1']):
                     extra={'index':i,'target_mode':'fixed_wrong_answer','assigned_answer_key':'bad',
-                           'game_data_str':json.dumps({'question':'q','answer':'good','metadata':{}})}
-                    originals.append(deepcopy(extra));observer.freeze(20,uid,'__observation_test__',extra,{'ground_truth':'bad'},extra,{'ground_truth':'bad'})
+                           'game_data_str':json.dumps({'question':'q','answer':'bad','metadata':{}}),
+                           'original_game_data_str':json.dumps({'question':'q','answer':'good','metadata':{}})}
+                    originals.append(deepcopy(extra));observer.freeze(19,uid,'__observation_test__',extra,{'ground_truth':'bad'},extra,{'ground_truth':'bad'})
                     extra['assigned_answer_key']='changed after freeze'
                 responses=torch.tensor([[3,0],[3,0],[2,0],[1,0],[2,0],[2,0],[2,0],[2,0]])
                 prompt=torch.full((8,2),9);mask=torch.tensor([[1,0]]*8)
@@ -53,18 +71,20 @@ class ObservabilityTests(unittest.TestCase):
                     'old_log_probs':torch.zeros(8,2),'ref_log_prob':torch.zeros(8,2)}
                 batch=DataProto.from_dict(tensors=tensors,non_tensors={'uid':np.array(['g0']*4+['g1']*4,dtype=object)})
                 batch.reorder(torch.tensor([4,0,5,1,6,2,7,3]))
-                before={k:v.clone() for k,v in batch.batch.items()};rng=state();trainer._completed_updates=20
+                before={k:v.clone() for k,v in batch.batch.items()};rng=state();trainer._completed_updates=19
                 metrics={};observer.observe(batch,metrics);observer.close()
                 assert state()==rng,'Diagnostics advanced training RNG'
                 assert all(torch.equal(v,batch.batch[k]) for k,v in before.items()),'Diagnostics changed optimization data'
                 assert metrics['noise/noisy_question_group_active_rate']==.5
                 assert metrics['noise/noisy_rollout_assigned_label_match_rate']==.25
-                assert metrics['noise/noisy_rollout_original_verifier_correctness_rate']==.625
+                assert metrics['noise/noisy_rollout_original_verifier_correctness_rate_v2']==.625
                 folder=next(observer.root.glob('step_*'));manifest=json.loads((folder/'manifest.json').read_text())
                 assert manifest['complete'] and manifest['rows']==8 and manifest['groups']==2
-                assert manifest['rollout_policy_version']==19 and manifest['update_version']==20
+                assert manifest['rollout_policy_version']==18 and manifest['update_version']==19
                 with gzip.open(folder/'rollouts.pt.gz','rb') as stream:payload=torch.load(stream,weights_only=False)
                 assert len({row['rollout_id'] for row in payload['rows']})==8
+                assert manifest['schema_version']==2
+                assert all(json.loads(row['original_clean_reference']['game_data_str'])['answer']=='good' for row in payload['rows'])
                 assert all(row['frozen_assigned_label']['ground_truth']=='bad' for row in payload['rows'])
                 assert torch.equal(payload['tensors']['advantages'],before['advantages'])
                 assert write_snapshot(observer.root,payload)['file_sha256']==manifest['file_sha256']
@@ -79,18 +99,18 @@ class ObservabilityTests(unittest.TestCase):
                     observer.freeze(21,uid,'__observation_test__',extra,{},extra,{})
                 clean={};observer.observe(batch,clean);observer.close()
                 assert clean['noise/noisy_question_groups']==0
-                for name in ['noisy_question_group_active_rate','noisy_rollout_assigned_label_match_rate','noisy_rollout_original_verifier_correctness_rate']:
+                for name in ['noisy_question_group_active_rate','noisy_rollout_assigned_label_match_rate','noisy_rollout_original_verifier_correctness_rate_v2']:
                     assert f'noise/{name}' not in clean
                     assert clean[f'noise/{name}/defined']==0 and clean[f'noise/{name}/denominator']==0
                 # Verifier failures are excluded from measured correctness and counted explicitly.
                 trainer.global_steps=22;observer=RolloutObserver(trainer)
                 for i,uid in enumerate(['g0','g1']):
-                    extra=deepcopy(originals[i]);extra['game_data_str']=json.dumps({'question':'q','answer':'ERROR','metadata':{}})
+                    extra=deepcopy(originals[i]);extra['original_game_data_str']=json.dumps({'question':'q','answer':'ERROR','metadata':{}})
                     observer.freeze(22,uid,'__observation_test__',extra,{},extra,{})
                 failed={};observer.observe(batch,failed);observer.close()
                 assert failed['noise/original_verifier_failures']==7
-                assert failed['noise/noisy_rollout_original_verifier_correctness_rate/denominator']==1
-                assert failed['noise/noisy_rollout_original_verifier_correctness_rate']==0
+                assert failed['noise/noisy_rollout_original_verifier_correctness_rate_v2/denominator']==1
+                assert failed['noise/noisy_rollout_original_verifier_correctness_rate_v2']==0
                 # Effective OLR replacements must not overwrite the original frozen target.
                 observer=RolloutObserver(trainer)
                 old=deepcopy(originals[0]);effective={**old,'assigned_answer_key':'refined'}
