@@ -35,7 +35,7 @@ Both native checkpoint ranks and all resume state passed validation; the final 2
 
 ## Continuation from step440 to840
 
-Continuation from preserved step440: 551/840 outer updates; latest validated save 550. Exactly400 additional updates authorized, same data/objective and two-GPU budget. The original step440 findings and KOR evaluation above remain preserved. training_active.
+Continuation from preserved step440: 600/840 outer updates; latest validated save 600. Exactly400 additional updates authorized, same data/objective and two-GPU budget. The original step440 findings and KOR evaluation above remain preserved. training_active.
 
 ## Events
 
