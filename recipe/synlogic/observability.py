@@ -1,5 +1,7 @@
 """Read-only rollout diagnostics and immutable pre-evaluation snapshots."""
 from collections import Counter, defaultdict
+from fractions import Fraction
+import ast
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from copy import deepcopy
@@ -18,6 +20,39 @@ import torch
 
 from src.fixed_labels import answer_key, extract_answer
 from src.syn_logic_reward import Data, TaskDeadlineExceeded, verifier_classes, verifier_deadline
+
+
+def mathador_true_correct(data, extracted, verifier):
+    """Shadow-only correction of upstream's overwritten target/self-comparison.
+
+    The optimization verifier is untouched. Evaluate arithmetic without eval().
+    """
+    expression = verifier.extract_answer(extracted)
+    if not expression or len(expression) > 512:
+        return False
+    metadata = data.metadata
+    if Counter(re.findall(r'\d+', expression)) != Counter(str(n) for n in metadata['numbers']):
+        return False
+    if any(c not in '0123456789() \n\t' and c not in metadata['operators'] for c in expression):
+        return False
+    def evaluate(node):
+        if isinstance(node, ast.Constant) and type(node.value) is int:
+            return Fraction(node.value)
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
+            value = evaluate(node.operand)
+            return -value if isinstance(node.op, ast.USub) else value
+        if isinstance(node, ast.BinOp):
+            left, right = evaluate(node.left), evaluate(node.right)
+            if isinstance(node.op, ast.Add): return left + right
+            if isinstance(node.op, ast.Sub): return left - right
+            if isinstance(node.op, ast.Mult): return left * right
+            if isinstance(node.op, ast.Div): return left / right
+        raise ValueError('Not a permitted arithmetic expression')
+    try:
+        value = evaluate(ast.parse(expression, mode='eval').body)
+        return abs(value - Fraction(str(metadata['result']))) < Fraction(1, 10**10)
+    except (ValueError, SyntaxError, ZeroDivisionError, RecursionError):
+        return False
 
 
 def snapshot_due(step, frequency, target):
@@ -168,7 +203,7 @@ class RolloutObserver:
                 raise ValueError('Missing original clean reference for noisy diagnostic')
             game=Data.from_json_str(extra[source_key]) if source_key in extra else deepcopy(extra['game_data'])
             with verifier_deadline(), open(os.devnull,'w') as sink, redirect_stdout(sink), redirect_stderr(sink):
-                native=int(bool(verifier.verify(game, extracted)))
+                native=int(bool(mathador_true_correct(game,extracted,verifier) if frame['task']=='mathador' else verifier.verify(game, extracted)))
         except (Exception, TaskDeadlineExceeded):native_failed=True
         return assigned, native, assigned_failed, native_failed, False
 
@@ -253,7 +288,7 @@ class RolloutObserver:
             'configuration':configuration,'configuration_sha256':hashlib.sha256(encoded(configuration)).hexdigest(),
             'source_provenance':provenance,'diagnostics':diagnostics,
             'assigned_match_definition':'Frozen dataset assigned target, before OLR replacement',
-            'original_reference_definition':'For noisy rows use only original_game_data_str; missing originals are verifier failures, never fallback to corrupted game data',
+            'original_reference_definition':'For noisy rows use only original_game_data_str; missing originals are verifier failures, never fallback to corrupted game data. Mathador arithmetic uses a read-only target check because the upstream verifier compares the evaluated result to itself.',
             'scoring_coverage_definition':'Unparseable responses are known incorrect; verifier errors are unknown. Native verifier successes exclude parse failures.',
             'active_definition':'Any exactly nonzero advantage at a valid response token within a noisy group'}
         payload={'metadata':plain(metadata),'rows':plain(rows),

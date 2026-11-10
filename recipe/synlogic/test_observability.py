@@ -7,7 +7,7 @@ import numpy as np
 import torch
 from omegaconf import OmegaConf
 from verl import DataProto
-from synlogic.observability import RolloutObserver, write_snapshot, verifier_classes
+from synlogic.observability import RolloutObserver, write_snapshot, verifier_classes, answer_key
 
 class Tokenizer:
     def decode(self, ids, skip_special_tokens=True):
@@ -41,6 +41,21 @@ class ObservabilityTests(unittest.TestCase):
             self.assertEqual(assigned,1)
             self.assertIsNone(native)
             self.assertFalse(af);self.assertTrue(nf);self.assertFalse(pf)
+
+    def test_original_mathador_diagnostic_checks_requested_result(self):
+        observer=object.__new__(RolloutObserver)
+        original={'question':'Use the numbers to make 10','answer':'```python\n1+2+3+4\n```',
+            'metadata':{'numbers':[1,2,3,4],'operators':['+','-','*','/'],'result':10}}
+        wrong='```python\n1*2*3*4\n```'
+        verifier=verifier_classes['mathador']()
+        extra={'assigned_answer_key':answer_key(wrong,verifier),
+            'original_game_data_str':json.dumps(original),
+            'game_data_str':json.dumps({**original,'answer':wrong})}
+        frame={'task':'mathador','corrupted':True,'original_extra':extra}
+        before=deepcopy(frame)
+        self.assertEqual(observer._score('<answer>'+wrong+'</answer>',frame),(1,0,False,False,False))
+        self.assertEqual(observer._score('<answer>'+original['answer']+'</answer>',frame),(0,1,False,False,False))
+        self.assertEqual(frame,before)
 
     def test_complete_read_only_observation_contract(self):
         self.assertEqual(torch.cuda.device_count(),0)
